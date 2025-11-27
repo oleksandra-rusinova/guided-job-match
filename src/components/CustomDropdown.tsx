@@ -119,12 +119,9 @@ export default function CustomDropdown({
       {/* Dropdown list */}
       {isOpen && (
         <div
+          className="absolute left-0 right-0"
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: 4,
+            top: 'calc(100% + 4px)',
             background: 'white',
             borderRadius: 16,
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',

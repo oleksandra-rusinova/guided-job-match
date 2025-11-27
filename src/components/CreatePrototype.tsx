@@ -518,21 +518,12 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
           options: [
             { 
               id: '1', 
-              jobTitle: 'Junior Technical Support Engineer',
-              location: 'Hyderabad, Telangana, India',
-              department: 'Customer Support',
+              jobTitle: '',
+              location: '',
+              department: '',
               jobType: '',
-              jobId: 'C-58500',
-              jobDescription: 'Lead a dynamic team in Hyderabad, focusing on cutting-edge projects in Telangana, India. Drive innovation and excellence in every endeavor.'
-            },
-            { 
-              id: '2', 
-              jobTitle: 'Senior Software Developer',
-              location: 'Bangalore, Karnataka, India',
-              department: 'Engineering',
-              jobType: '',
-              jobId: 'C-58501',
-              jobDescription: 'Join our engineering team to build innovative solutions and work on exciting projects.'
+              jobId: '',
+              jobDescription: ''
             },
           ],
           selectionType: 'single' as 'single' | 'multiple',
@@ -683,18 +674,22 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                 <p className="text-sm text-gray-600 mt-1">Add steps and configure the elements on each page of the GJM</p>
               </div>
               <div className="flex items-center gap-3">
-                <SecondaryButton
-                  onClick={() => setShowPrototypeTemplateModal(true)}
-                  disabled={steps.length === 0}
-                  size="sm"
-                >
-                  <Bookmark size={16} />
-                  Save as template
-                </SecondaryButton>
-                <div className="relative">
+                {steps.length > 0 && (
+                  <div className="flex items-center h-8">
+                    <SecondaryButton
+                      onClick={() => setShowPrototypeTemplateModal(true)}
+                      size="sm"
+                    >
+                      <Bookmark size={16} />
+                      Save as template
+                    </SecondaryButton>
+                  </div>
+                )}
+                <div className="relative flex items-center h-8">
               <TextButton
                     onClick={() => setShowAddStepDropdown(!showAddStepDropdown)}
                 size="sm"
+                className="h-8 flex items-center"
               >
                 <Plus size={20} />
                 Add step
@@ -706,7 +701,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                         className="fixed inset-0 z-10"
                         onClick={() => setShowAddStepDropdown(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                      <div className="absolute left-0 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20" style={{ top: 'calc(100% + 4px)' }}>
                         <button
                           onClick={() => {
                             addStep();

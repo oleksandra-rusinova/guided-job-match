@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { GripVertical, Trash2, Plus } from 'lucide-react';
+import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Element } from '../types';
 import SelectionConfiguration from './SelectionConfiguration';
 import TextButton from './TextButton';
@@ -28,6 +28,8 @@ export default function CardEditor({
 }: CardEditorProps) {
   const dragCardIdRef = useRef<string | null>(null);
   const [newlyAddedCardOptionId, setNewlyAddedCardOptionId] = useState<string | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const autoExpandedElementIdsRef = useRef<Set<string>>(new Set());
 
   const addCardOption = () => {
     const currentOptions = element.config.options || [];
@@ -222,9 +224,12 @@ export default function CardEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element.type, element.id, options.length]);
 
-  // Scroll to newly added application card option
+  // Scroll to newly added application card option and expand it
   useEffect(() => {
     if (newlyAddedCardOptionId && element.type === 'application_card') {
+      // Expand the newly added card
+      setExpandedCards(prev => new Set(prev).add(newlyAddedCardOptionId));
+      
       const cardElement = document.getElementById(`card-option-${newlyAddedCardOptionId}`);
       if (cardElement) {
         // Small delay to ensure DOM is updated
@@ -239,6 +244,22 @@ export default function CardEditor({
       }
     }
   }, [newlyAddedCardOptionId, element.type]);
+
+  // Auto-expand first option when application_card element is first added with options
+  useEffect(() => {
+    if (element.type === 'application_card' && options.length > 0) {
+      // Check if we've already auto-expanded for this element
+      if (!autoExpandedElementIdsRef.current.has(element.id)) {
+        const firstOptionId = options[0]?.id;
+        if (firstOptionId && !expandedCards.has(firstOptionId)) {
+          // Expand the first option when the element is first rendered with options
+          setExpandedCards(prev => new Set(prev).add(firstOptionId));
+          autoExpandedElementIdsRef.current.add(element.id);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element.id]);
 
   return (
     <div className="mt-3 space-y-2">
@@ -265,7 +286,7 @@ export default function CardEditor({
         <div
           key={opt.id}
           id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
-          className="border border-gray-200 rounded-lg p-3 bg-white space-y-3"
+          className={`border border-gray-200 rounded-lg p-3 space-y-3 ${element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'}`}
           draggable
           onDragStart={(e) => handleDragStart(e, opt.id)}
           onDragOver={handleDragOver}
@@ -290,6 +311,26 @@ export default function CardEditor({
             )}
             {element.type === 'application_card' && (
               <span className="text-sm font-medium flex-1" style={{ color: '#464F5E' }}>Application Card {idx + 1}</span>
+            )}
+            {element.type === 'application_card' && (
+              <button
+                onClick={() => {
+                  const newExpanded = new Set(expandedCards);
+                  if (newExpanded.has(opt.id)) {
+                    newExpanded.delete(opt.id);
+                  } else {
+                    newExpanded.add(opt.id);
+                  }
+                  setExpandedCards(newExpanded);
+                }}
+                className="p-0"
+              >
+                {expandedCards.has(opt.id) ? (
+                  <ChevronUp size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                ) : (
+                  <ChevronDown size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                )}
+              </button>
             )}
             <button
               onClick={() => deleteCardOption(opt.id)}
@@ -456,46 +497,46 @@ export default function CardEditor({
           )}
 
           {/* Application card configuration */}
-          {element.type === 'application_card' && (
+          {element.type === 'application_card' && expandedCards.has(opt.id) && (
             <div className="space-y-3" style={{ border: 'none' }}>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Title
                 </label>
                 <EditorField
                   value={opt.jobTitle || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'jobTitle', value)}
-                  placeholder="Enter job title"
+                  placeholder="Enter Job Title"
                   className="w-full"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Location
                 </label>
                 <EditorField
                   value={opt.location || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'location', value)}
-                  placeholder="Enter location"
+                  placeholder="Enter Location"
                   className="w-full"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Department
                 </label>
                 <EditorField
                   value={opt.department || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'department', value)}
-                  placeholder="Enter department"
+                  placeholder="Enter Department"
                   className="w-full"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Type
                 </label>
                 <SystemField
@@ -513,25 +554,25 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job ID
                 </label>
                 <EditorField
                   value={opt.jobId || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'jobId', value)}
-                  placeholder="Enter job ID"
+                  placeholder="Enter Job ID"
                   className="w-full"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Description
                 </label>
                 <EditorField
                   value={opt.jobDescription || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'jobDescription', value)}
-                  placeholder="Enter job description"
+                  placeholder="Enter Job Description"
                   className="w-full"
                 />
               </div>
@@ -542,7 +583,7 @@ export default function CardEditor({
                 </label>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Primary Button Link (Apply)
                     </label>
                     <SystemField
@@ -554,7 +595,7 @@ export default function CardEditor({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Learn More Button Link (View details)
                     </label>
                     <SystemField

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link as LinkIcon, ChevronDown } from 'lucide-react';
 
 interface SystemFieldProps {
@@ -27,14 +27,39 @@ export default function SystemField({
   options = []
 }: SystemFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const baseClasses = "w-full px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none hover:shadow-md transition-all duration-200";
   const disabledClasses = disabled ? "bg-gray-50 text-gray-400 cursor-not-allowed" : "";
   const labelClasses = "block text-sm font-medium mb-2";
   const labelStyle = { color: '#464F5E' };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+        setIsFocused(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isDropdownOpen]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     onChange(e.target.value);
+  };
+
+  const handleDropdownSelect = (optionId: string) => {
+    onChange(optionId);
+    setIsDropdownOpen(false);
+    setIsFocused(false);
   };
 
   const renderField = () => {
@@ -76,34 +101,49 @@ export default function SystemField({
       const displayValue = selectedOption ? (selectedOption.title || `Option ${selectedOption.id}`) : '';
       
       return (
-        <div className="relative">
-          <select
-            value={value}
-            onChange={handleChange}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={() => !disabled && setIsDropdownOpen(!isDropdownOpen)}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onBlur={() => !isDropdownOpen && setIsFocused(false)}
             disabled={disabled}
-            className={`${baseClasses} pr-10 appearance-none cursor-pointer ${disabledClasses} ${className}`}
+            className={`${baseClasses} pr-10 appearance-none cursor-pointer text-left ${disabledClasses} ${className}`}
             style={{
               color: displayValue ? '#111827' : '#9CA3AF'
             }}
           >
-            {!value && placeholder && (
-              <option value="" disabled>
-                {placeholder}
-              </option>
-            )}
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.title || `Option ${option.id}`}
-              </option>
-            ))}
-          </select>
-          <ChevronDown 
-            size={20} 
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-            style={{ color: disabled ? '#9CA3AF' : '#6B7280' }}
-          />
+            {displayValue || placeholder}
+            <ChevronDown 
+              size={20} 
+              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: disabled ? '#9CA3AF' : '#6B7280' }}
+            />
+          </button>
+          {isDropdownOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setIsDropdownOpen(false)}
+              />
+              <div 
+                className="absolute left-0 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
+                style={{ top: 'calc(100% + 4px)' }}
+              >
+                {options.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleDropdownSelect(option.id)}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                    style={{ color: '#464F5E' }}
+                  >
+                    {option.title || `Option ${option.id}`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       );
     }

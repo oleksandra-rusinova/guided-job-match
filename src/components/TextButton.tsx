@@ -57,10 +57,10 @@ export default function TextButton({
 
   const getHoverColor = (color: string) => {
     const { r, g, b } = parseColor(color);
-    // Darken by approximately 15% for hover state
-    const hoverR = Math.max(0, Math.floor(r * 0.85));
-    const hoverG = Math.max(0, Math.floor(g * 0.85));
-    const hoverB = Math.max(0, Math.floor(b * 0.85));
+    // Darken by approximately 30% for hover state
+    const hoverR = Math.max(0, Math.floor(r * 0.70));
+    const hoverG = Math.max(0, Math.floor(g * 0.70));
+    const hoverB = Math.max(0, Math.floor(b * 0.70));
     return `rgb(${hoverR}, ${hoverG}, ${hoverB})`;
   };
 
@@ -105,7 +105,7 @@ export default function TextButton({
     textClass = 'text-components-text-button-primary-text-default text-primary-600';
     iconClass = 'bg-components-button-tertiary-ghost-icon-focus';
   } else if (isHovered) {
-    bgClass = 'bg-components-button-tertiary-ghost-bg-hover bg-gray-50';
+    bgClass = '';
     textClass = 'text-components-text-button-primary-text-default text-primary-600';
     iconClass = 'bg-components-button-tertiary-ghost-icon-hover';
   } else {
@@ -147,17 +147,26 @@ export default function TextButton({
     onMouseUp?.(e);
   };
 
-  // Apply primaryColor for text when provided
+  // System color constant
+  const systemColor = '#4D3EE0';
+  
+  // Apply primaryColor for text when provided, or use system color
   const buttonStyle: React.CSSProperties = {};
-  if (primaryColor && !disabled) {
+  const colorToUse = primaryColor || systemColor;
+  
+  // Ensure no border or outline when pressed
+  buttonStyle.border = 'none';
+  buttonStyle.outline = 'none';
+  
+  if (!disabled) {
     if (isActive) {
-      buttonStyle.color = getActiveColor(primaryColor);
+      buttonStyle.color = getActiveColor(colorToUse);
     } else if (isHovered) {
-      buttonStyle.color = getHoverColor(primaryColor);
+      buttonStyle.color = getHoverColor(colorToUse);
     } else if (isFocused) {
-      buttonStyle.color = primaryColor;
+      buttonStyle.color = colorToUse;
     } else {
-      buttonStyle.color = primaryColor;
+      buttonStyle.color = colorToUse;
     }
   }
 
@@ -190,6 +199,8 @@ export default function TextButton({
           focus:outline-none
           focus-visible:outline-none
           active:outline-none
+          border-none
+          outline-none
           ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
           ${className}
         `}

@@ -265,12 +265,12 @@ export default function TemplateEditor({
           options: [
             { 
               id: '1', 
-              jobTitle: 'Junior Technical Support Engineer',
-              location: 'Hyderabad, Telangana, India',
-              department: 'Customer Support',
+              jobTitle: '',
+              location: '',
+              department: '',
               jobType: '',
-              jobId: 'C-58500',
-              jobDescription: 'Lead a dynamic team in Hyderabad, focusing on cutting-edge projects in Telangana, India. Drive innovation and excellence in every endeavor.'
+              jobId: '',
+              jobDescription: ''
             },
           ],
           selectionType: 'single' as 'single' | 'multiple',
