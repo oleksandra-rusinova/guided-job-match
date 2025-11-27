@@ -16,6 +16,8 @@ import EditorField from './EditorField';
 import TemplateNameModal from './TemplateNameModal';
 import TemplateSelector from './TemplateSelector';
 import Tooltip from './Tooltip';
+import PresenceIndicator from './PresenceIndicator';
+import { usePresence } from '../hooks/usePresence';
 import {
   getQuestionTemplates,
   saveQuestionTemplate,
@@ -36,6 +38,28 @@ interface CreatePrototypeProps {
 }
 
 export default function CreatePrototype({ onSave, onCancel, editingPrototype, template }: CreatePrototypeProps) {
+  // Generate a user ID for this session
+  const userId = `user-${localStorage.getItem('userId') || crypto.randomUUID()}`;
+  const userName = localStorage.getItem('userName') || `User ${userId.slice(-4)}`;
+
+  // Set up presence tracking when editing an existing prototype
+  const channelName = editingPrototype?.id ? `prototype-presence-${editingPrototype.id}` : '';
+  const { presenceUsers, isConnected: presenceConnected, setEditing } = usePresence(
+    channelName,
+    userId,
+    userName
+  );
+
+  // Track editing state
+  useEffect(() => {
+    if (editingPrototype && channelName) {
+      setEditing(true, 'prototype-editor');
+      return () => {
+        setEditing(false);
+      };
+    }
+  }, [editingPrototype, channelName, setEditing]);
+
   // Initialize steps from template if provided, otherwise from editingPrototype or empty
   const getInitialSteps = (): Step[] => {
     if (template?.prototype?.steps) {
@@ -532,6 +556,11 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
 
   return (
     <div className="min-h-screen bg-white">
+      {editingPrototype && presenceConnected && presenceUsers && presenceUsers.length > 0 && (
+        <div className="sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-2 border-b border-gray-200 bg-gray-50">
+          <PresenceIndicator users={presenceUsers} currentUserId={userId} />
+        </div>
+      )}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <TextButton
           onClick={onCancel}

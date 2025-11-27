@@ -21,6 +21,7 @@ import ApplicationCard from './widgets/ApplicationCard';
 import CardEditor from './CardEditor';
 import Footer from './Footer';
 import PrototypeHeader from './PrototypeHeader';
+import PresenceIndicator from './PresenceIndicator';
 import Checkbox from './Checkbox';
 import TabControl from './TabControl';
 import FileUploader from './FileUploader';
@@ -32,8 +33,12 @@ interface PrototypeViewProps {
 }
 
 export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProps) {
+  // Generate a user ID for this session (in a real app, this would come from auth)
+  const userId = `user-${localStorage.getItem('userId') || crypto.randomUUID()}`;
+  const userName = localStorage.getItem('userName') || `User ${userId.slice(-4)}`;
+
   // Use Realtime hook to get prototype and listen for changes
-  const { prototype, isConnected } = useRealtimePrototype(prototypeId);
+  const { prototype, isConnected, presenceUsers, setEditing } = useRealtimePrototype(prototypeId, userId, userName);
   
   const [currentPage, setCurrentPage] = useState(0);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -63,11 +68,15 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
         .filter(el => el.type === 'application_card' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards')
         .map(el => el.id);
       setExpandedCardElements(new Set(cardElementIds));
+      // Track that user is editing
+      setEditing(true, `step-${currentPage}`);
     } else if (!isEditorOpen) {
       // Reset expanded state when editor closes
       setExpandedCardElements(new Set());
+      // Track that user stopped editing
+      setEditing(false);
     }
-  }, [isEditorOpen, currentStep]);
+  }, [isEditorOpen, currentStep, currentPage, setEditing]);
 
   // Show loading state if prototype is not loaded yet
   if (!prototype) {
@@ -1091,6 +1100,11 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
           onEdit={() => setIsEditorOpen(true)}
           onExit={onExit}
         />
+        {isConnected && presenceUsers && presenceUsers.length > 0 && (
+          <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
+            <PresenceIndicator users={presenceUsers} currentUserId={userId} />
+          </div>
+        )}
       </div>
 
       <main className="flex-1 overflow-y-auto pt-[73px] pb-[81px]" style={{ backgroundColor: '#F8F9FB' }}>

@@ -2,11 +2,20 @@ import { useEffect, useState, useCallback } from 'react';
 import { Prototype } from '../types';
 import { supabase } from '../utils/supabase';
 import { getPrototype } from '../utils/storage';
+import { usePresence, PresenceUser } from './usePresence';
 
-export function useRealtimePrototype(prototypeId: string | null) {
+export function useRealtimePrototype(prototypeId: string | null, userId?: string, userName?: string) {
   const [prototype, setPrototype] = useState<Prototype | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Set up presence tracking for this prototype
+  const channelName = prototypeId ? `prototype-presence-${prototypeId}` : '';
+  const { presences, presenceUsers, isConnected: presenceConnected, setEditing } = usePresence(
+    channelName,
+    userId || `user-${crypto.randomUUID()}`,
+    userName || 'Anonymous'
+  );
 
   // Transform database record to Prototype format
   const transformRecord = useCallback((record: any): Prototype => {
@@ -103,6 +112,14 @@ export function useRealtimePrototype(prototypeId: string | null) {
     };
   }, [prototypeId, transformRecord]);
 
-  return { prototype, isConnected, isLoading, setPrototype };
+  return {
+    prototype,
+    isConnected: isConnected && presenceConnected,
+    isLoading,
+    setPrototype,
+    presences,
+    presenceUsers,
+    setEditing,
+  };
 }
 
