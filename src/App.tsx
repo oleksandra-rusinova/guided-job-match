@@ -19,22 +19,28 @@ export default function App() {
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
 
   // Use Realtime hook for prototypes - automatically updates on changes
-  const { prototypes, isConnected } = useRealtimePrototypes();
+  const { prototypes, isConnected, updatePrototypeInState, removePrototypeFromState } = useRealtimePrototypes();
 
   useEffect(() => {
     setPrototypeTemplates(getPrototypeTemplates());
   }, []);
 
   const handleSavePrototype = async (prototype: Prototype) => {
-    await savePrototype(prototype);
-    // No need to manually reload - Realtime will update automatically
+    const result = await savePrototype(prototype);
+    // Update local state immediately for instant UI feedback
+    if (result.success && result.data) {
+      updatePrototypeInState(result.data);
+    }
+    // Realtime will also update, but local state update provides instant feedback
     setView('home');
   };
 
   const handleDeletePrototype = async (id: string) => {
     if (confirm('Are you sure you want to delete this prototype?')) {
       await deletePrototype(id);
-      // No need to manually reload - Realtime will update automatically
+      // Update local state immediately for instant UI feedback
+      removePrototypeFromState(id);
+      // Realtime will also update, but local state update provides instant feedback
     }
   };
 
@@ -53,8 +59,12 @@ export default function App() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await savePrototype(duplicated);
-      // No need to manually reload - Realtime will update automatically
+      const result = await savePrototype(duplicated);
+      // Update local state immediately for instant UI feedback
+      if (result.success && result.data) {
+        updatePrototypeInState(result.data);
+      }
+      // Realtime will also update, but local state update provides instant feedback
     }
   };
 

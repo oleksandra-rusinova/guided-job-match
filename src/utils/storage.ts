@@ -65,13 +65,18 @@ export const getPrototypes = async (): Promise<Prototype[]> => {
   }
 };
 
-export const savePrototype = async (prototype: Prototype): Promise<{ success: boolean; error?: string }> => {
+export const savePrototype = async (prototype: Prototype): Promise<{ success: boolean; error?: string; data?: Prototype }> => {
   if (USE_LOCAL_STORAGE) {
     savePrototypeLocal(prototype);
     return { success: true };
   }
 
   try {
+    if (!supabase) {
+      savePrototypeLocal(prototype);
+      return { success: true, data: prototype };
+    }
+
     // Check if prototype exists to determine if it's an insert or update
     const { data: existing } = await supabase
       .from('prototypes')
@@ -111,16 +116,30 @@ export const savePrototype = async (prototype: Prototype): Promise<{ success: bo
       console.error('Error saving prototype to Supabase:', error);
       // Fallback to localStorage
       savePrototypeLocal(prototype);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, data: prototype };
     }
 
     console.log(`Prototype ${isUpdate ? 'updated' : 'created'} successfully:`, data?.id);
-    return { success: true };
+    
+    // Transform and return the saved prototype for local state update
+    const savedPrototype: Prototype = {
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      primaryColor: data.primary_color,
+      logoUrl: data.logo_url,
+      logoUploadMode: data.logo_upload_mode,
+      steps: data.steps,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    return { success: true, data: savedPrototype };
   } catch (error: any) {
     console.error('Error saving prototype:', error);
     // Fallback to localStorage
     savePrototypeLocal(prototype);
-    return { success: false, error: error?.message || 'Unknown error occurred' };
+    return { success: false, error: error?.message || 'Unknown error occurred', data: prototype };
   }
 };
 
@@ -166,22 +185,40 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
 export const updatePrototype = async (
   id: string,
   updates: Partial<Omit<Prototype, 'id' | 'createdAt'>>
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; error?: string; data?: Prototype }> => {
   if (USE_LOCAL_STORAGE) {
     const prototypes = getPrototypesLocal();
     const index = prototypes.findIndex(p => p.id === id);
     if (index >= 0) {
-      prototypes[index] = {
+      const updated = {
         ...prototypes[index],
         ...updates,
         updatedAt: new Date().toISOString(),
       };
+      prototypes[index] = updated;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(prototypes));
+      return { success: true, data: updated };
     }
-    return { success: true };
+    return { success: false, error: 'Prototype not found' };
   }
 
   try {
+    if (!supabase) {
+      const prototypes = getPrototypesLocal();
+      const index = prototypes.findIndex(p => p.id === id);
+      if (index >= 0) {
+        const updated = {
+          ...prototypes[index],
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+        prototypes[index] = updated;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(prototypes));
+        return { success: true, data: updated };
+      }
+      return { success: false, error: 'Prototype not found' };
+    }
+
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
@@ -207,18 +244,34 @@ export const updatePrototype = async (
       const prototypes = getPrototypesLocal();
       const index = prototypes.findIndex(p => p.id === id);
       if (index >= 0) {
-        prototypes[index] = {
+        const updated = {
           ...prototypes[index],
           ...updates,
           updatedAt: new Date().toISOString(),
         };
+        prototypes[index] = updated;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(prototypes));
+        return { success: false, error: error.message, data: updated };
       }
       return { success: false, error: error.message };
     }
 
     console.log('Prototype updated successfully:', data?.id);
-    return { success: true };
+    
+    // Transform and return the updated prototype for local state update
+    const updatedPrototype: Prototype = {
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      primaryColor: data.primary_color,
+      logoUrl: data.logo_url,
+      logoUploadMode: data.logo_upload_mode,
+      steps: data.steps,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    return { success: true, data: updatedPrototype };
   } catch (error: any) {
     console.error('Error updating prototype:', error);
     return { success: false, error: error?.message || 'Unknown error occurred' };

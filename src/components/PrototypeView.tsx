@@ -38,7 +38,7 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
   const userName = localStorage.getItem('userName') || `User ${userId.slice(-4)}`;
 
   // Use Realtime hook to get prototype and listen for changes
-  const { prototype, isConnected, presenceUsers, setEditing } = useRealtimePrototype(prototypeId, userId, userName);
+  const { prototype, isConnected, presenceUsers, setEditing, updatePrototypeInState } = useRealtimePrototype(prototypeId, userId, userName);
   
   const [currentPage, setCurrentPage] = useState(0);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -299,7 +299,13 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
       steps: stepsState,
       updatedAt: new Date().toISOString(),
     };
-    await savePrototype(updatedPrototype);
+    const result = await savePrototype(updatedPrototype);
+    // Update local state immediately for instant UI feedback
+    if (result.success && result.data) {
+      updatePrototypeInState(result.data);
+      // Also update local stepsState to match
+      setStepsState(result.data.steps);
+    }
     setIsEditorOpen(false);
   };
 

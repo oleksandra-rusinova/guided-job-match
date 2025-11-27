@@ -112,11 +112,17 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
     };
   }, [prototypeId, transformRecord]);
 
+  // Function to optimistically update local state after saving
+  const updatePrototypeInState = useCallback((updatedPrototype: Prototype) => {
+    setPrototype(updatedPrototype);
+  }, []);
+
   return {
     prototype,
     isConnected: isConnected && presenceConnected,
     isLoading,
     setPrototype,
+    updatePrototypeInState,
     presences,
     presenceUsers,
     setEditing,

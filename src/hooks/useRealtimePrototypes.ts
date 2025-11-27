@@ -90,6 +90,34 @@ export function useRealtimePrototypes() {
     };
   }, [transformRecord]);
 
-  return { prototypes, isConnected, isLoading, setPrototypes };
+  // Function to optimistically update local state after saving
+  const updatePrototypeInState = useCallback((updatedPrototype: Prototype) => {
+    setPrototypes(prev => {
+      const index = prev.findIndex(p => p.id === updatedPrototype.id);
+      if (index >= 0) {
+        // Update existing prototype
+        const updated = [...prev];
+        updated[index] = updatedPrototype;
+        return updated;
+      } else {
+        // Add new prototype at the beginning
+        return [updatedPrototype, ...prev];
+      }
+    });
+  }, []);
+
+  // Function to remove prototype from state
+  const removePrototypeFromState = useCallback((id: string) => {
+    setPrototypes(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  return {
+    prototypes,
+    isConnected,
+    isLoading,
+    setPrototypes,
+    updatePrototypeInState,
+    removePrototypeFromState,
+  };
 }
 
