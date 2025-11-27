@@ -1,4 +1,4 @@
-import { Users, Edit } from 'lucide-react';
+import { Edit } from 'lucide-react';
 import { PresenceUser } from '../hooks/usePresence';
 
 interface PresenceIndicatorProps {
@@ -12,7 +12,7 @@ export default function PresenceIndicator({ users, currentUserId, className = ''
   const otherUsers = users.filter(user => user.id !== currentUserId);
   const editingUsers = otherUsers.filter(user => user.isEditing);
 
-  if (otherUsers.length === 0) {
+  if (editingUsers.length === 0) {
     return null;
   }
 
@@ -28,30 +28,6 @@ export default function PresenceIndicator({ users, currentUserId, className = ''
           </span>
         </div>
       )}
-      
-      <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
-        <Users className="w-3 h-3" />
-        <span>{otherUsers.length} online</span>
-        {otherUsers.length > 0 && (
-          <div className="flex -space-x-1">
-            {otherUsers.slice(0, 3).map((user, index) => (
-              <div
-                key={user.id}
-                className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium border-2 border-white"
-                style={{ zIndex: 10 - index }}
-                title={user.name}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            ))}
-            {otherUsers.length > 3 && (
-              <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium border-2 border-white">
-                +{otherUsers.length - 3}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

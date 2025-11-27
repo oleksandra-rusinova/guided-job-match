@@ -95,7 +95,6 @@ export default function App() {
       {view === 'home' && (
         <HomePage
           prototypes={prototypes}
-          isRealtimeConnected={isConnected}
           onCreateNew={handleCreateNew}
           onUseTemplate={handleUseTemplate}
           onOpenPrototype={handleOpenPrototype}

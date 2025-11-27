@@ -1124,7 +1124,6 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
       <div className="fixed top-0 left-0 right-0 z-30 bg-white">
         <PrototypeHeader 
           prototype={prototype}
-          isRealtimeConnected={isConnected}
           onEdit={() => setIsEditorOpen(true)}
           onExit={onExit}
         />

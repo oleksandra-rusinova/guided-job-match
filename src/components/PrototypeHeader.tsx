@@ -1,16 +1,14 @@
 import React from 'react';
 import { Edit, X } from 'lucide-react';
 import { Prototype } from '../types';
-import RealtimeStatus from './RealtimeStatus';
 
 interface PrototypeHeaderProps {
   prototype: Prototype;
-  isRealtimeConnected?: boolean;
   onEdit: () => void;
   onExit: () => void;
 }
 
-export default function PrototypeHeader({ prototype, isRealtimeConnected = false, onEdit, onExit }: PrototypeHeaderProps) {
+export default function PrototypeHeader({ prototype, onEdit, onExit }: PrototypeHeaderProps) {
   return (
     <header className="bg-white border-b border-gray-200 py-4">
       <div className="mx-auto px-6 flex items-center justify-between">
@@ -27,7 +25,6 @@ export default function PrototypeHeader({ prototype, isRealtimeConnected = false
         
         {/* Right side - Action buttons */}
         <div className="flex items-center gap-2">
-          <RealtimeStatus isConnected={isRealtimeConnected} />
           <button
             onClick={onEdit}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
