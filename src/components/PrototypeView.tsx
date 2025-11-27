@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
 import { savePrototype } from '../utils/storage';
+import { useRealtimePrototype } from '../hooks/useRealtimePrototype';
 import { getElementLabel, ELEMENT_TYPES } from '../utils/elementTypes';
 import PrimaryButton from './PrimaryButton';
 import TextButton from './TextButton';
@@ -25,15 +26,18 @@ import TabControl from './TabControl';
 import FileUploader from './FileUploader';
 
 interface PrototypeViewProps {
-  prototype: Prototype;
+  prototypeId: string;
   onExit: () => void;
   onEdit: () => void;
 }
 
-export default function PrototypeView({ prototype, onExit }: PrototypeViewProps) {
+export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProps) {
+  // Use Realtime hook to get prototype and listen for changes
+  const { prototype, isConnected } = useRealtimePrototype(prototypeId);
+  
   const [currentPage, setCurrentPage] = useState(0);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [stepsState, setStepsState] = useState<Step[]>(prototype.steps || []);
+  const [stepsState, setStepsState] = useState<Step[]>(prototype?.steps || []);
   const [fieldValues, setFieldValues] = useState<Record<string, string | string[]>>({});
   const [openElementMenuStepId, setOpenElementMenuStepId] = useState<string | null>(null);
   const [hoveredCheckbox, setHoveredCheckbox] = useState<string | null>(null);
@@ -44,6 +48,13 @@ export default function PrototypeView({ prototype, onExit }: PrototypeViewProps)
   const canGoNext = currentPage < totalPages - 1;
 
   const currentStep: Step | undefined = stepsState[currentPage];
+
+  // Sync stepsState when prototype updates from Realtime
+  useEffect(() => {
+    if (prototype && prototype.steps) {
+      setStepsState(prototype.steps);
+    }
+  }, [prototype]);
 
   // Initialize expanded state for all card elements when editor opens
   useEffect(() => {
@@ -57,6 +68,18 @@ export default function PrototypeView({ prototype, onExit }: PrototypeViewProps)
       setExpandedCardElements(new Set());
     }
   }, [isEditorOpen, currentStep]);
+
+  // Show loading state if prototype is not loaded yet
+  if (!prototype) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading prototype...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate if next button should be disabled
   const isNextDisabled = useMemo(() => {
@@ -261,13 +284,13 @@ export default function PrototypeView({ prototype, onExit }: PrototypeViewProps)
   };
 
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const updatedPrototype: Prototype = {
       ...prototype,
       steps: stepsState,
       updatedAt: new Date().toISOString(),
     };
-    savePrototype(updatedPrototype);
+    await savePrototype(updatedPrototype);
     setIsEditorOpen(false);
   };
 
@@ -1064,6 +1087,7 @@ export default function PrototypeView({ prototype, onExit }: PrototypeViewProps)
       <div className="fixed top-0 left-0 right-0 z-30 bg-white">
         <PrototypeHeader 
           prototype={prototype}
+          isRealtimeConnected={isConnected}
           onEdit={() => setIsEditorOpen(true)}
           onExit={onExit}
         />

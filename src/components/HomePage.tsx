@@ -5,9 +5,11 @@ import PrototypeCard from './PrototypeCard';
 import PrimaryButton from './PrimaryButton';
 import SecondaryButton from './SecondaryButton';
 import SystemField from './SystemField';
+import RealtimeStatus from './RealtimeStatus';
 
 interface HomePageProps {
   prototypes: Prototype[];
+  isRealtimeConnected?: boolean;
   onCreateNew: () => void;
   onUseTemplate: () => void;
   onOpenPrototype: (id: string) => void;
@@ -17,7 +19,7 @@ interface HomePageProps {
   onOpenTemplates: () => void;
 }
 
-export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpenPrototype, onEditPrototype, onDuplicatePrototype, onDeletePrototype, onOpenTemplates }: HomePageProps) {
+export default function HomePage({ prototypes, isRealtimeConnected = false, onCreateNew, onUseTemplate, onOpenPrototype, onEditPrototype, onDuplicatePrototype, onDeletePrototype, onOpenTemplates }: HomePageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
 
@@ -45,6 +47,7 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
               <p className="text-gray-500 text-md">Create and manage Guided Job Match prototypes</p>
             </div>
             <div className="flex items-center gap-3">
+              <RealtimeStatus isConnected={isRealtimeConnected} />
               <SecondaryButton onClick={onOpenTemplates} icon={<Bookmark size={18} />}>
                 Prototype templates
               </SecondaryButton>

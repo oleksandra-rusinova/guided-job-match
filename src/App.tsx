@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Prototype, QuestionTemplate, PrototypeTemplate } from './types';
-import { getPrototypes, savePrototype, deletePrototype } from './utils/storage';
+import { savePrototype, deletePrototype } from './utils/storage';
 import { getPrototypeTemplates } from './utils/templates';
+import { useRealtimePrototypes } from './hooks/useRealtimePrototypes';
 import HomePage from './components/HomePage';
 import CreatePrototype from './components/CreatePrototype';
 import PrototypeView from './components/PrototypeView';
@@ -12,27 +13,28 @@ type View = 'home' | 'create' | 'view' | 'edit' | 'templates';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
-  const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [selectedPrototypeId, setSelectedPrototypeId] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<PrototypeTemplate | null>(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
 
+  // Use Realtime hook for prototypes - automatically updates on changes
+  const { prototypes, isConnected } = useRealtimePrototypes();
+
   useEffect(() => {
-    setPrototypes(getPrototypes());
     setPrototypeTemplates(getPrototypeTemplates());
   }, []);
 
-  const handleSavePrototype = (prototype: Prototype) => {
-    savePrototype(prototype);
-    setPrototypes(getPrototypes());
+  const handleSavePrototype = async (prototype: Prototype) => {
+    await savePrototype(prototype);
+    // No need to manually reload - Realtime will update automatically
     setView('home');
   };
 
-  const handleDeletePrototype = (id: string) => {
+  const handleDeletePrototype = async (id: string) => {
     if (confirm('Are you sure you want to delete this prototype?')) {
-      deletePrototype(id);
-      setPrototypes(getPrototypes());
+      await deletePrototype(id);
+      // No need to manually reload - Realtime will update automatically
     }
   };
 
@@ -41,7 +43,7 @@ export default function App() {
     setView('edit');
   };
 
-  const handleDuplicatePrototype = (id: string) => {
+  const handleDuplicatePrototype = async (id: string) => {
     const prototype = prototypes.find(p => p.id === id);
     if (prototype) {
       const duplicated: Prototype = {
@@ -51,8 +53,8 @@ export default function App() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      savePrototype(duplicated);
-      setPrototypes(getPrototypes());
+      await savePrototype(duplicated);
+      // No need to manually reload - Realtime will update automatically
     }
   };
 
@@ -78,13 +80,12 @@ export default function App() {
     setView('create');
   };
 
-  const selectedPrototype = prototypes.find(p => p.id === selectedPrototypeId);
-
   return (
     <>
       {view === 'home' && (
         <HomePage
           prototypes={prototypes}
+          isRealtimeConnected={isConnected}
           onCreateNew={handleCreateNew}
           onUseTemplate={handleUseTemplate}
           onOpenPrototype={handleOpenPrototype}
@@ -114,17 +115,17 @@ export default function App() {
         type="prototype"
       />
 
-      {view === 'view' && selectedPrototype && (
+      {view === 'view' && selectedPrototypeId && (
         <PrototypeView
-          prototype={selectedPrototype}
+          prototypeId={selectedPrototypeId}
           onExit={() => setView('home')}
-          onEdit={() => handleEditPrototype(selectedPrototype.id)}
+          onEdit={() => handleEditPrototype(selectedPrototypeId)}
         />
       )}
 
-      {view === 'edit' && selectedPrototype && (
+      {view === 'edit' && selectedPrototypeId && (
         <CreatePrototype
-          editingPrototype={selectedPrototype}
+          editingPrototype={prototypes.find(p => p.id === selectedPrototypeId) || undefined}
           onSave={handleSavePrototype}
           onCancel={() => setView('home')}
         />

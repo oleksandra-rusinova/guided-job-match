@@ -1,0 +1,18 @@
+[build]
+  # Build command for Vite
+  command = "npm run build"
+  # Directory to publish (Vite's default output directory)
+  publish = "dist"
+
+# Environment variables can be set in Netlify dashboard
+# Go to Site settings > Environment variables
+# Add:
+# - VITE_SUPABASE_URL: Your Supabase project URL
+# - VITE_SUPABASE_ANON_KEY: Your Supabase anonymous/public key
+
+[[redirects]]
+  # SPA fallback - redirect all routes to index.html
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
