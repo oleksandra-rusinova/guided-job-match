@@ -65,35 +65,62 @@ export const getPrototypes = async (): Promise<Prototype[]> => {
   }
 };
 
-export const savePrototype = async (prototype: Prototype): Promise<void> => {
+export const savePrototype = async (prototype: Prototype): Promise<{ success: boolean; error?: string }> => {
   if (USE_LOCAL_STORAGE) {
     savePrototypeLocal(prototype);
-    return;
+    return { success: true };
   }
 
   try {
-    const { error } = await supabase
+    // Check if prototype exists to determine if it's an insert or update
+    const { data: existing } = await supabase
       .from('prototypes')
-      .upsert({
-        id: prototype.id,
-        name: prototype.name,
-        description: prototype.description,
-        primary_color: prototype.primaryColor,
-        logo_url: prototype.logoUrl,
-        logo_upload_mode: prototype.logoUploadMode,
-        steps: prototype.steps,
-        updated_at: new Date().toISOString(),
-      }, {
+      .select('id')
+      .eq('id', prototype.id)
+      .single();
+
+    const isUpdate = !!existing;
+
+    // Prepare the data object
+    const prototypeData: any = {
+      id: prototype.id,
+      name: prototype.name,
+      description: prototype.description,
+      primary_color: prototype.primaryColor,
+      logo_url: prototype.logoUrl || null,
+      logo_upload_mode: prototype.logoUploadMode,
+      steps: prototype.steps,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Include created_at only for new prototypes
+    if (!isUpdate && prototype.createdAt) {
+      prototypeData.created_at = prototype.createdAt;
+    }
+
+    // Use upsert to handle both insert and update
+    const { data, error } = await supabase
+      .from('prototypes')
+      .upsert(prototypeData, {
         onConflict: 'id',
-      });
+      })
+      .select()
+      .single();
 
     if (error) {
-      console.error('Error saving prototype:', error);
-      savePrototypeLocal(prototype); // Fallback to localStorage
+      console.error('Error saving prototype to Supabase:', error);
+      // Fallback to localStorage
+      savePrototypeLocal(prototype);
+      return { success: false, error: error.message };
     }
-  } catch (error) {
+
+    console.log(`Prototype ${isUpdate ? 'updated' : 'created'} successfully:`, data?.id);
+    return { success: true };
+  } catch (error: any) {
     console.error('Error saving prototype:', error);
-    savePrototypeLocal(prototype); // Fallback to localStorage
+    // Fallback to localStorage
+    savePrototypeLocal(prototype);
+    return { success: false, error: error?.message || 'Unknown error occurred' };
   }
 };
 
@@ -133,6 +160,68 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
     console.error('Error fetching prototype:', error);
     const prototypes = getPrototypesLocal();
     return prototypes.find(p => p.id === id);
+  }
+};
+
+export const updatePrototype = async (
+  id: string,
+  updates: Partial<Omit<Prototype, 'id' | 'createdAt'>>
+): Promise<{ success: boolean; error?: string }> => {
+  if (USE_LOCAL_STORAGE) {
+    const prototypes = getPrototypesLocal();
+    const index = prototypes.findIndex(p => p.id === id);
+    if (index >= 0) {
+      prototypes[index] = {
+        ...prototypes[index],
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(prototypes));
+    }
+    return { success: true };
+  }
+
+  try {
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    // Map Prototype fields to database columns
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.primaryColor !== undefined) updateData.primary_color = updates.primaryColor;
+    if (updates.logoUrl !== undefined) updateData.logo_url = updates.logoUrl;
+    if (updates.logoUploadMode !== undefined) updateData.logo_upload_mode = updates.logoUploadMode;
+    if (updates.steps !== undefined) updateData.steps = updates.steps;
+
+    const { data, error } = await supabase
+      .from('prototypes')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating prototype:', error);
+      // Fallback to localStorage
+      const prototypes = getPrototypesLocal();
+      const index = prototypes.findIndex(p => p.id === id);
+      if (index >= 0) {
+        prototypes[index] = {
+          ...prototypes[index],
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(prototypes));
+      }
+      return { success: false, error: error.message };
+    }
+
+    console.log('Prototype updated successfully:', data?.id);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating prototype:', error);
+    return { success: false, error: error?.message || 'Unknown error occurred' };
   }
 };
 
