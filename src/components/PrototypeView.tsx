@@ -3,6 +3,8 @@ import { X, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
 import { savePrototype } from '../utils/storage';
 import { useRealtimePrototype } from '../hooks/useRealtimePrototype';
+import { useAutoSave } from '../hooks/useAutoSave';
+import AutoSaveIndicator from './AutoSaveIndicator';
 import { getElementLabel, ELEMENT_TYPES } from '../utils/elementTypes';
 import PrimaryButton from './PrimaryButton';
 import TextButton from './TextButton';
@@ -60,6 +62,26 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
       setStepsState(prototype.steps);
     }
   }, [prototype]);
+
+  // Build current prototype state for auto-save when editing
+  const currentPrototypeForSave: Prototype | null = prototype && isEditorOpen ? {
+    ...prototype,
+    steps: stepsState,
+    updatedAt: new Date().toISOString(),
+  } : null;
+
+  // Auto-save when editing steps
+  const { isSaving, lastSaved } = useAutoSave({
+    prototype: currentPrototypeForSave,
+    enabled: isEditorOpen && !!prototype,
+    debounceMs: 2000, // 2 second debounce for step edits
+    onSave: (savedPrototype) => {
+      // Update local state
+      updatePrototypeInState(savedPrototype);
+      setStepsState(savedPrototype.steps);
+      console.log('Auto-saved prototype steps');
+    },
+  });
 
   // Initialize expanded state for all card elements when editor opens
   useEffect(() => {
@@ -1578,6 +1600,9 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
               <p className="text-xs text-gray-500">Editing is limited to this step's elements. To change prototype settings like logo and color, use Edit on the prototype card.</p>
             </div>
             <div className="p-4 border-t border-gray-200 bg-white">
+              <div className="flex items-center justify-end mb-2">
+                <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
+              </div>
               <PrimaryButton
                 onClick={handleSave}
                 className="w-full"

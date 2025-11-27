@@ -18,6 +18,8 @@ import TemplateSelector from './TemplateSelector';
 import Tooltip from './Tooltip';
 import PresenceIndicator from './PresenceIndicator';
 import { usePresence } from '../hooks/usePresence';
+import { useAutoSave } from '../hooks/useAutoSave';
+import AutoSaveIndicator from './AutoSaveIndicator';
 import {
   getQuestionTemplates,
   saveQuestionTemplate,
@@ -84,6 +86,31 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   const [logoUrl, setLogoUrl] = useState(editingPrototype?.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [steps, setSteps] = useState<Step[]>(getInitialSteps());
+
+  // Build current prototype state for auto-save
+  const currentPrototype: Prototype | null = editingPrototype ? {
+    id: editingPrototype.id,
+    name,
+    description,
+    primaryColor,
+    logoUrl: logoUploadMode === 'url' ? logoUrl : logoFile ? logoUrl : editingPrototype.logoUrl,
+    logoUploadMode,
+    steps,
+    createdAt: editingPrototype.createdAt,
+    updatedAt: new Date().toISOString(),
+  } : null;
+
+  // Auto-save when editing existing prototype
+  const autoSaveResult = useAutoSave({
+    prototype: currentPrototype,
+    enabled: !!editingPrototype && !!editingPrototype.id,
+    debounceMs: 1500, // 1.5 second debounce
+    onSave: (savedPrototype) => {
+      // Update local state if needed
+      console.log('Auto-saved:', savedPrototype.name);
+    },
+  });
+  const { isSaving, lastSaved } = autoSaveResult;
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [openElementMenuStepId, setOpenElementMenuStepId] = useState<string | null>(null);
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
@@ -562,13 +589,17 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
         </div>
       )}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <TextButton
-          onClick={onCancel}
-          icon={<ArrowLeft size={20} />}
-          className="mb-6"
-        >
-          Back to Home
-        </TextButton>
+        <div className="flex items-center justify-between mb-6">
+          <TextButton
+            onClick={onCancel}
+            icon={<ArrowLeft size={20} />}
+          >
+            Back to Home
+          </TextButton>
+          {editingPrototype && (
+            <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
+          )}
+        </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-8">
           <div>
