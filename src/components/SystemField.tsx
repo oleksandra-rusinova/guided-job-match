@@ -26,7 +26,7 @@ export default function SystemField({
   showLabel = true,
   options = []
 }: SystemFieldProps) {
-  const [isFocused, setIsFocused] = useState(false);
+  const [_isFocused, setIsFocused] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +82,10 @@ export default function SystemField({
     }
 
     if (type === 'textarea') {
+      // Calculate max-height based on rows to ensure scrollbar appears when content exceeds
+      // Approximate: line-height ~1.5rem (24px) per row + padding (py-2 = 16px total)
+      const maxHeight = `${rows * 1.5 + 0.5}rem`; // rows * line-height + padding
+      
       return (
         <textarea
           value={value}
@@ -91,7 +95,8 @@ export default function SystemField({
           disabled={disabled}
           placeholder={placeholder}
           rows={rows}
-          className={`${baseClasses} resize-none ${disabledClasses} ${className}`}
+          style={{ maxHeight, minHeight: `${rows * 1.5 + 0.5}rem` }}
+          className={`${baseClasses} resize-none overflow-y-auto ${disabledClasses} ${className}`}
         />
       );
     }

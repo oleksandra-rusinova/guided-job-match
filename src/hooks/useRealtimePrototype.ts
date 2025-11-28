@@ -2,12 +2,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { Prototype } from '../types';
 import { supabase } from '../utils/supabase';
 import { getPrototype } from '../utils/storage';
-import { usePresence, PresenceUser } from './usePresence';
+import { usePresence } from './usePresence';
 
-export function useRealtimePrototype(prototypeId: string | null, userId?: string, userName?: string) {
-  const [prototype, setPrototype] = useState<Prototype | null>(null);
+export function useRealtimePrototype(prototypeId: string | null, userId?: string, userName?: string, initialPrototype?: Prototype) {
+  const [prototype, setPrototype] = useState<Prototype | null>(initialPrototype || null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialPrototype);
 
   // Set up presence tracking for this prototype
   const channelName = prototypeId ? `prototype-presence-${prototypeId}` : '';
@@ -32,6 +32,13 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
     };
   }, []);
 
+  // Sync initialPrototype when it changes
+  useEffect(() => {
+    if (initialPrototype && initialPrototype.id === prototypeId) {
+      setPrototype(initialPrototype);
+    }
+  }, [initialPrototype, prototypeId]);
+
   // Load initial data
   useEffect(() => {
     if (!prototypeId) {
@@ -40,24 +47,39 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
       return;
     }
 
+    // If we have an initial prototype with matching ID, use it and skip loading
+    if (initialPrototype && initialPrototype.id === prototypeId) {
+      setPrototype(initialPrototype);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
     const loadInitialData = async () => {
       try {
+        console.log('Loading prototype with ID:', prototypeId);
         const data = await getPrototype(prototypeId);
+        console.log('Prototype loaded:', data ? 'Found' : 'Not found', data);
         setPrototype(data || null);
       } catch (error) {
         console.error('Error loading prototype:', error);
+        setPrototype(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadInitialData();
-  }, [prototypeId]);
+  }, [prototypeId, initialPrototype]);
 
   // Set up Realtime subscription for specific prototype
   useEffect(() => {
-    if (!prototypeId || !supabase) {
-      setIsLoading(false);
+    if (!prototypeId) {
+      return;
+    }
+    
+    if (!supabase) {
+      console.log('Supabase not configured, skipping Realtime subscription');
       return;
     }
 
@@ -82,6 +104,7 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
 
           // Fetch updated prototype
           try {
+            if (!supabase) return;
             const { data, error } = await supabase
               .from('prototypes')
               .select('*')
@@ -108,7 +131,9 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
 
     // Cleanup subscription on unmount
     return () => {
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [prototypeId, transformRecord]);
 

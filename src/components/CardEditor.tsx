@@ -406,7 +406,7 @@ export default function CardEditor({
                 <FileUploader
                   value={opt.imageUrl ? { name: 'Uploaded image', size: 0, dataUrl: opt.imageUrl } : undefined}
                   onChange={(file, fileInfo) => handleOptionImageUpload(opt.id, file, fileInfo)}
-                  onMultipleChange={disableAddCard ? undefined : (files, fileInfos) => handleMultipleImageUpload(fileInfos, opt.id)}
+                  onMultipleChange={disableAddCard ? undefined : (_files, fileInfos) => handleMultipleImageUpload(fileInfos, opt.id)}
                   accept="image/*"
                   maxSize={3}
                   showPreview={true}
@@ -569,11 +569,14 @@ export default function CardEditor({
                 <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Description
                 </label>
-                <EditorField
+                <SystemField
+                  type="textarea"
                   value={opt.jobDescription || ''}
                   onChange={(value) => updateAdvancedCardOption(opt.id, 'jobDescription', value)}
                   placeholder="Enter Job Description"
-                  className="w-full"
+                  showLabel={false}
+                  rows={4}
+                  className="w-full overflow-y-auto"
                 />
               </div>
 

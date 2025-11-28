@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
 import { QuestionTemplate, PrototypeTemplate, ApplicationStepTemplate } from '../types';
-import SystemField from './SystemField';
 
 interface TemplateSelectorProps {
   isOpen: boolean;

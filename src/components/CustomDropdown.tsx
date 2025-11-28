@@ -13,7 +13,7 @@ interface CustomDropdownProps {
 export default function CustomDropdown({ 
   value, 
   placeholder = 'Select an option', 
-  primaryColor, 
+  primaryColor: _primaryColor, 
   disabled = false, 
   options = [],
   onChange 

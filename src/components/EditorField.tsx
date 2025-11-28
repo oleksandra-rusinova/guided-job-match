@@ -15,7 +15,7 @@ export default function EditorField({
   disabled = false,
   className = '' 
 }: EditorFieldProps) {
-  const [isFocused, setIsFocused] = useState(false);
+  const [_isFocused, setIsFocused] = useState(false);
 
   const baseClasses = "px-3 py-2 text-sm border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none hover:shadow-md transition-all duration-200";
   const disabledClasses = disabled ? "bg-gray-50 text-gray-400 cursor-not-allowed" : "";

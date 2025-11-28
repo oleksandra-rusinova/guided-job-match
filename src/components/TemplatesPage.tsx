@@ -13,7 +13,6 @@ import {
   saveApplicationStepTemplate,
 } from '../utils/templates';
 import IconButton from './IconButton';
-import SystemField from './SystemField';
 import TemplateNameModal from './TemplateNameModal';
 import TemplateEditor from './TemplateEditor';
 import Tabs from './Tabs';
@@ -27,8 +26,8 @@ interface TemplatesPageProps {
 
 export default function TemplatesPage({
   onBack,
-  onEditQuestionTemplate,
-  onEditPrototypeTemplate,
+  onEditQuestionTemplate: _onEditQuestionTemplate,
+  onEditPrototypeTemplate: _onEditPrototypeTemplate,
 }: TemplatesPageProps) {
   const [questionTemplates, setQuestionTemplates] = useState<QuestionTemplate[]>([]);
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);

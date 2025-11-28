@@ -18,7 +18,9 @@ export function usePresence(channelName: string, userId: string, userName: strin
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!supabase || !channelName) return;
+    if (!supabase || !channelName) {
+      return;
+    }
 
     // Generate a unique client ID for this session
     const clientId = userId || `client-${crypto.randomUUID()}`;
@@ -72,7 +74,9 @@ export function usePresence(channelName: string, userId: string, userName: strin
 
     return () => {
       channel.untrack();
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [channelName, userId, userName]);
 
@@ -81,7 +85,8 @@ export function usePresence(channelName: string, userId: string, userName: strin
       if (!supabase || !channelName) return;
 
       const channel = supabase.channel(channelName);
-      const currentPresence = presences[userId] || { id: userId, name: userName };
+      // currentPresence is computed but not used - keeping for potential future use
+      // const currentPresence = presences[userId] || { id: userId, name: userName };
 
       // Get existing presence data
       const existingPresence = channel.presenceState()[userId]?.[0] || {};

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Edit, X } from 'lucide-react';
 import { Prototype } from '../types';
 

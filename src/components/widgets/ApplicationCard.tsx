@@ -23,7 +23,7 @@ interface ApplicationCardProps {
 }
 
 export default function ApplicationCard({ 
-  id, 
+  id: _id, 
   title, 
   description, 
   imageUrl,
@@ -43,15 +43,16 @@ export default function ApplicationCard({
   const [isHovered, setIsHovered] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
 
-  const getIndicatorState = () => {
-    if (disabled) {
-      return 'Disabled';
-    }
-    if (selected) {
-      return 'Selected';
-    }
-    return 'Default';
-  };
+  // getIndicatorState is computed but not used - keeping for potential future use
+  // const getIndicatorState = () => {
+  //   if (disabled) {
+  //     return 'Disabled';
+  //   }
+  //   if (selected) {
+  //     return 'Selected';
+  //   }
+  //   return 'Default';
+  // };
 
   // Determine border color based on state (matching other cards)
   let borderColor: string;
@@ -193,7 +194,7 @@ export default function ApplicationCard({
           </div>
 
           {/* Job Description - Always show as placeholder */}
-          <div className="self-stretch text-left text-sm font-normal font-['Poppins'] leading-6 tracking-tight line-clamp-4" style={{ color: descriptionTextColor, minHeight: '96px' }}>
+          <div className="self-stretch text-left text-sm font-normal font-['Poppins'] leading-6 tracking-tight overflow-y-auto" style={{ color: descriptionTextColor, height: '104px', minHeight: '104px' }}>
             {displayDescription || '\u00A0'}
           </div>
         </div>

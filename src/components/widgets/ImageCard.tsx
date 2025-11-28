@@ -13,7 +13,7 @@ interface ImageCardProps {
 }
 
 export default function ImageCard({ 
-  id, 
+  id: _id, 
   title, 
   description, 
   imageUrl, 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Trash2, Save, ChevronDown, ChevronUp, GripVertical, Bookmark } from 'lucide-react';
+import { Plus, Trash2, Save, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Step, Element, ElementType } from '../types';
 import { ELEMENT_TYPES, getElementLabel } from '../utils/elementTypes';
 import SystemField from './SystemField';
@@ -26,7 +26,7 @@ export default function TemplateEditor({
   templateName: initialName,
   steps: initialSteps,
   onSave,
-  onCancel,
+  onCancel: _onCancel,
   primaryColor = '#4D3EE0',
   isQuestionTemplate = false,
 }: TemplateEditorProps) {

@@ -37,6 +37,9 @@ export const getPrototypes = async (): Promise<Prototype[]> => {
   }
 
   try {
+    if (!supabase) {
+      return getPrototypesLocal();
+    }
     const { data, error } = await supabase
       .from('prototypes')
       .select('*')
@@ -68,7 +71,7 @@ export const getPrototypes = async (): Promise<Prototype[]> => {
 export const savePrototype = async (prototype: Prototype): Promise<{ success: boolean; error?: string; data?: Prototype }> => {
   if (USE_LOCAL_STORAGE) {
     savePrototypeLocal(prototype);
-    return { success: true };
+    return { success: true, data: prototype };
   }
 
   try {
@@ -150,6 +153,10 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
   }
 
   try {
+    if (!supabase) {
+      const prototypes = getPrototypesLocal();
+      return prototypes.find(p => p.id === id);
+    }
     const { data, error } = await supabase
       .from('prototypes')
       .select('*')
@@ -285,6 +292,10 @@ export const deletePrototype = async (id: string): Promise<void> => {
   }
 
   try {
+    if (!supabase) {
+      deletePrototypeLocal(id);
+      return;
+    }
     const { error } = await supabase
       .from('prototypes')
       .delete()

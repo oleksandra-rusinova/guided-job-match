@@ -19,7 +19,7 @@ export default function TextField({
   showLabel = true, 
   value, 
   placeholder = 'Placeholder', 
-  primaryColor, 
+  primaryColor: _primaryColor, 
   disabled = false,
   helperText,
   error = false,

@@ -12,7 +12,7 @@ interface ImageOnlyCardProps {
 }
 
 export default function ImageOnlyCard({ 
-  id, 
+  id: _id, 
   imageUrl, 
   selected, 
   onSelect, 
@@ -25,14 +25,6 @@ export default function ImageOnlyCard({
   // When there are exactly 4 cards, use fixed aspect ratio sizing
   const isFourCards = totalCards === 4;
 
-  const getOutlineWidth = () => {
-    return 'outline-1';
-  };
-
-  const getOutlineOffset = () => {
-    return 'outline-offset-[-1px]';
-  };
-
   const getIndicatorState = () => {
     if (disabled) {
       return 'Disabled';
@@ -43,7 +35,7 @@ export default function ImageOnlyCard({
     return 'Default';
   };
 
-  // Determine border color based on state (matching TextField logic)
+  // Determine border color based on state (matching other cards)
   let borderColor: string;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
@@ -62,7 +54,7 @@ export default function ImageOnlyCard({
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline ${getOutlineWidth()} ${getOutlineOffset()} flex flex-col ${
+      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] flex flex-col p-[1px] ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{ 
@@ -96,7 +88,7 @@ export default function ImageOnlyCard({
       </div>
 
        {/* Image Container - Takes full height */}
-       <div className={`relative w-full ${isFourCards ? 'h-full' : 'h-1/2 flex-1'} overflow-hidden rounded-2xl`}>
+       <div className={`relative w-full ${isFourCards ? 'h-full' : 'h-1/2 flex-1'} overflow-hidden rounded-[15px]`}>
          <img
            src={imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'}
            alt="Card image"

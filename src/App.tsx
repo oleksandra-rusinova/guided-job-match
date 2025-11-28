@@ -19,7 +19,7 @@ export default function App() {
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
 
   // Use Realtime hook for prototypes - automatically updates on changes
-  const { prototypes, isConnected, updatePrototypeInState, removePrototypeFromState } = useRealtimePrototypes();
+  const { prototypes, updatePrototypeInState, removePrototypeFromState } = useRealtimePrototypes();
 
   useEffect(() => {
     setPrototypeTemplates(getPrototypeTemplates());
@@ -69,8 +69,10 @@ export default function App() {
   };
 
   const handleOpenPrototype = (id: string) => {
+    console.log('handleOpenPrototype called with id:', id);
     setSelectedPrototypeId(id);
     setView('view');
+    console.log('View set to:', 'view', 'selectedPrototypeId:', id);
   };
 
   const handleUseTemplate = () => {
@@ -89,6 +91,8 @@ export default function App() {
     setSelectedTemplate(null);
     setView('create');
   };
+
+  console.log('App render - view:', view, 'selectedPrototypeId:', selectedPrototypeId);
 
   return (
     <>
@@ -126,8 +130,13 @@ export default function App() {
 
       {view === 'view' && selectedPrototypeId && (
         <PrototypeView
+          key={selectedPrototypeId}
           prototypeId={selectedPrototypeId}
-          onExit={() => setView('home')}
+          prototype={prototypes.find(p => p.id === selectedPrototypeId)}
+          onExit={() => {
+            console.log('PrototypeView onExit called');
+            setView('home');
+          }}
           onEdit={() => handleEditPrototype(selectedPrototypeId)}
         />
       )}
@@ -143,11 +152,11 @@ export default function App() {
       {view === 'templates' && (
         <TemplatesPage
           onBack={() => setView('home')}
-          onEditQuestionTemplate={(template) => {
+          onEditQuestionTemplate={() => {
             // For now, just go back - editing is handled in TemplatesPage
             setView('templates');
           }}
-          onEditPrototypeTemplate={(template) => {
+          onEditPrototypeTemplate={() => {
             // For now, just go back - editing is handled in TemplatesPage
             setView('templates');
           }}

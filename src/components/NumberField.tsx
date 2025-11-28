@@ -24,10 +24,10 @@ export default function NumberField({
   disabled = false,
   placeholder,
   className = '',
-  size = 'sm',
+  size: _size = 'sm',
   showLabel = false,
   label = 'Number',
-  primaryColor = '#2563EB',
+  primaryColor: _primaryColor = '#2563EB',
 }: NumberFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);

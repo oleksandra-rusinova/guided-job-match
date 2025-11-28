@@ -30,17 +30,22 @@ import FileUploader from './FileUploader';
 
 interface PrototypeViewProps {
   prototypeId: string;
+  prototype?: Prototype; // Optional prototype from state to avoid reloading
   onExit: () => void;
   onEdit: () => void;
 }
 
-export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProps) {
+export default function PrototypeView({ prototypeId, prototype: initialPrototype, onExit }: PrototypeViewProps) {
   // Generate a user ID for this session (in a real app, this would come from auth)
   const userId = `user-${localStorage.getItem('userId') || crypto.randomUUID()}`;
   const userName = localStorage.getItem('userName') || `User ${userId.slice(-4)}`;
 
+  console.log('PrototypeView rendering with prototypeId:', prototypeId);
+
   // Use Realtime hook to get prototype and listen for changes
-  const { prototype, isConnected, presenceUsers, setEditing, updatePrototypeInState } = useRealtimePrototype(prototypeId, userId, userName);
+  const { prototype, isConnected, presenceUsers, setEditing, updatePrototypeInState, isLoading } = useRealtimePrototype(prototypeId, userId, userName, initialPrototype);
+  
+  console.log('PrototypeView state:', { isLoading, prototype: prototype ? 'exists' : 'null', prototypeId });
   
   const [currentPage, setCurrentPage] = useState(0);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -101,7 +106,8 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
   }, [isEditorOpen, currentStep, currentPage, setEditing]);
 
   // Show loading state if prototype is not loaded yet
-  if (!prototype) {
+  if (isLoading) {
+    console.log('PrototypeView: Showing loading state');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -111,6 +117,27 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
       </div>
     );
   }
+
+  // Show error state if prototype failed to load
+  if (!prototype) {
+    console.log('PrototypeView: Prototype not found');
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 text-lg mb-4">Prototype not found</p>
+          <p className="text-gray-500 mb-6">The prototype you're looking for doesn't exist or couldn't be loaded.</p>
+          <button
+            onClick={onExit}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('PrototypeView: Rendering prototype content', { stepsCount: prototype.steps?.length || 0 });
 
   // Calculate if next button should be disabled
   const isNextDisabled = useMemo(() => {
@@ -183,7 +210,7 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
     );
   };
 
-  const handleStepImageUpload = (stepId: string, file: File, fileInfo: { name: string; size: number; dataUrl: string }) => {
+  const handleStepImageUpload = (stepId: string, _file: File | null, fileInfo: { name: string; size: number; dataUrl: string }) => {
     updateStep(stepId, { imageUrl: fileInfo.dataUrl });
   };
 
@@ -332,7 +359,27 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
   };
 
   const renderStep = () => {
-    if (!currentStep) return null;
+    if (!currentStep) {
+      // Show message if no steps exist
+      if (totalPages === 0) {
+        return (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <p className="text-gray-600 text-lg">This prototype has no steps yet.</p>
+              <p className="text-gray-500 mt-2">Edit the prototype to add steps.</p>
+            </div>
+          </div>
+        );
+      }
+      // Show message if current page is out of bounds
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-gray-600 text-lg">Step not found.</p>
+          </div>
+        </div>
+      );
+    }
 
     // Application step header (heading and subheading)
     const applicationStepHeader = currentStep.isApplicationStep ? (
@@ -1286,7 +1333,11 @@ export default function PrototypeView({ prototypeId, onExit }: PrototypeViewProp
                         ) : (
                           <FileUploader
                             value={currentStep.imageUrl ? { name: 'Step image', size: 0, dataUrl: currentStep.imageUrl } : undefined}
-                            onChange={(file, fileInfo) => handleStepImageUpload(currentStep.id, file, fileInfo)}
+                            onChange={(file, fileInfo) => {
+                              if (file && fileInfo) {
+                                handleStepImageUpload(currentStep.id, file, fileInfo);
+                              }
+                            }}
                             accept="image/*"
                             maxSize={5}
                             showPreview={true}

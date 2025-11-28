@@ -16,12 +16,12 @@ interface AdvancedCardProps {
 }
 
 export default function AdvancedCard({
-  id,
+  id: _id,
   heading,
   mainText,
   linkSupportingText,
   linkEnabled = false,
-  linkUrl,
+  linkUrl: _linkUrl,
   linkText = 'Learn more',
   selected,
   onSelect,
@@ -52,8 +52,8 @@ export default function AdvancedCard({
     borderColor = '#E8EAEE'; // gray-200
   }
 
-  // Text color based on state
-  const textColor = disabled ? 'text-gray-400' : 'text-gray-600';
+  // Text color based on state (computed but not used - keeping for potential future use)
+  // const textColor = disabled ? 'text-gray-400' : 'text-gray-600';
   const linkTextColor = disabled 
     ? 'text-gray-400' 
     : 'text-blue-600';

@@ -62,6 +62,7 @@ export function useRealtimePrototypes() {
 
           // Reload prototypes after any change
           try {
+            if (!supabase) return;
             const { data, error } = await supabase
               .from('prototypes')
               .select('*')
@@ -86,7 +87,9 @@ export function useRealtimePrototypes() {
 
     // Cleanup subscription on unmount
     return () => {
-      supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [transformRecord]);
 

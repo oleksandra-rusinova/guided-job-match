@@ -1,4 +1,3 @@
-import React from 'react';
 import Checkbox from './Checkbox';
 
 interface ShowLabelToggleProps {
@@ -8,7 +7,7 @@ interface ShowLabelToggleProps {
   primaryColor: string;
 }
 
-export default function ShowLabelToggle({ checked, onChange, label = 'Show label', primaryColor }: ShowLabelToggleProps) {
+export default function ShowLabelToggle({ checked, onChange, label = 'Show label', primaryColor: _primaryColor }: ShowLabelToggleProps) {
   // In editor mode, use system default color. In view mode, use prototype's branding color
   // Since ShowLabelToggle is only used in editor mode (CreatePrototype), we ignore primaryColor
   // and let Checkbox use its default system color (#4D3EE0)

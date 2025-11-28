@@ -223,7 +223,8 @@ export default function FileUploader({
     return parseFloat(size.toFixed(2)) + ' ' + sizes[index];
   };
 
-  const isEmpty = !(hasValue && showPreview);
+  // isEmpty is computed but not used - keeping for potential future use
+  // const isEmpty = !(hasValue && showPreview);
 
 return (
   <div className={`file-uploader ${className}`}>
