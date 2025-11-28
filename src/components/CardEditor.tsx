@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState } from 'react';
 import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Element } from '../types';
+
+type OptionType = NonNullable<Element['config']['options']>[number];
 import SelectionConfiguration from './SelectionConfiguration';
 import TextButton from './TextButton';
 import FileUploader from './FileUploader';
@@ -34,6 +36,11 @@ export default function CardEditor({
   const addCardOption = () => {
     const currentOptions = element.config.options || [];
     
+    // For checkboxes, only allow one option
+    if (element.type === 'checkboxes' && currentOptions.length >= 1) {
+      return;
+    }
+    
     // For application_card, if this is the first card (no cards exist), ensure only one is added
     if (element.type === 'application_card' && currentOptions.length === 0) {
       const newOption = {
@@ -50,7 +57,7 @@ export default function CardEditor({
       return;
     }
     
-    let newOption: any;
+    let newOption: OptionType;
     if (element.type === 'advanced_cards') {
       newOption = {
         id: crypto.randomUUID(),
@@ -80,7 +87,7 @@ export default function CardEditor({
   };
 
   const deleteCardOption = (optionId: string) => {
-    const options = (element.config.options || []).filter((opt: any) => opt.id !== optionId);
+    const options = (element.config.options || []).filter((opt: OptionType) => opt.id !== optionId);
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
@@ -89,22 +96,26 @@ export default function CardEditor({
     try {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', optionId);
-    } catch {}
+    } catch {
+      // Ignore errors
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     try { 
       e.dataTransfer.dropEffect = 'move'; 
-    } catch {}
+    } catch {
+      // Ignore errors
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetOptionId: string) => {
     e.preventDefault();
     const draggedId = dragCardIdRef.current || e.dataTransfer.getData('text/plain');
     const options = [...(element.config.options || [])];
-    const fromIndex = options.findIndex((o: any) => o.id === draggedId);
-    const toIndex = options.findIndex((o: any) => o.id === targetOptionId);
+    const fromIndex = options.findIndex((o: OptionType) => o.id === draggedId);
+    const toIndex = options.findIndex((o: OptionType) => o.id === targetOptionId);
     
     if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
     
@@ -119,35 +130,35 @@ export default function CardEditor({
   };
 
   const updateOptionTitle = (optionId: string, title: string) => {
-    const options = (element.config.options || []).map((o: any) =>
+    const options = (element.config.options || []).map((o: OptionType) =>
       o.id === optionId ? { ...o, title } : o
     );
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
-  const handleOptionImageUpload = (optionId: string, _file: File | null, fileInfo: any) => {
-    const options = (element.config.options || []).map((o: any) =>
+  const handleOptionImageUpload = (optionId: string, _file: File | null, fileInfo: { name: string; size: number; dataUrl: string }) => {
+    const options = (element.config.options || []).map((o: OptionType) =>
       o.id === optionId ? { ...o, imageUrl: fileInfo?.dataUrl || '' } : o
     );
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
   const handleOptionImageUploadModeChange = (optionId: string, uploadMode: 'upload' | 'url') => {
-    const options = (element.config.options || []).map((o: any) =>
+    const options = (element.config.options || []).map((o: OptionType) =>
       o.id === optionId ? { ...o, imageUploadMode: uploadMode } : o
     );
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
   const handleOptionImageUrlChange = (optionId: string, imageUrl: string) => {
-    const options = (element.config.options || []).map((o: any) =>
+    const options = (element.config.options || []).map((o: OptionType) =>
       o.id === optionId ? { ...o, imageUrl } : o
     );
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
-  const updateAdvancedCardOption = (optionId: string, field: string, value: any) => {
-    const options = (element.config.options || []).map((o: any) =>
+  const updateAdvancedCardOption = (optionId: string, field: string, value: string | boolean) => {
+    const options = (element.config.options || []).map((o: OptionType) =>
       o.id === optionId ? { ...o, [field]: value } : o
     );
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
@@ -161,10 +172,10 @@ export default function CardEditor({
 
     // If there's a current option and it doesn't have an image, update it with the first image
     if (currentOptionId && fileInfos.length > 0) {
-      const currentOption = updatedOptions.find((o: any) => o.id === currentOptionId);
+      const currentOption = updatedOptions.find((o: OptionType) => o.id === currentOptionId);
       if (currentOption && !currentOption.imageUrl) {
         // Update current card with first image
-        updatedOptions = updatedOptions.map((o: any) =>
+        updatedOptions = updatedOptions.map((o: OptionType) =>
           o.id === currentOptionId
             ? { ...o, imageUrl: fileInfos[0].dataUrl, imageUploadMode: 'upload' as const }
             : o
@@ -262,7 +273,7 @@ export default function CardEditor({
   }, [element.id]);
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-2 space-y-2">
       {/* Empty state for application_card when no cards exist */}
       {element.type === 'application_card' && options.length === 0 ? (
         <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -282,19 +293,39 @@ export default function CardEditor({
       ) : (
         <>
           {/* Card Options */}
-          {options.map((opt: any, idx: number) => (
+          {options.map((opt: OptionType, idx: number) => {
+            const canDrag = options.length > 1;
+            return (
         <div
           key={opt.id}
           id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
           className={`border border-gray-200 rounded-lg p-3 space-y-3 ${element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'}`}
-          draggable
-          onDragStart={(e) => handleDragStart(e, opt.id)}
-          onDragOver={handleDragOver}
-          onDrop={(e) => handleDrop(e, opt.id)}
-          onDragEnd={handleDragEnd}
+          draggable={false}
+          onDragStart={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragOver={canDrag ? handleDragOver : undefined}
+          onDrop={canDrag ? (e) => handleDrop(e, opt.id) : undefined}
         >
           <div className="flex items-center gap-2">
-            <GripVertical size={16} className="text-gray-400 cursor-grab" />
+            {canDrag && (
+              <span
+                draggable={true}
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  handleDragStart(e, opt.id);
+                }}
+                onDragEnd={(e) => {
+                  e.stopPropagation();
+                  handleDragEnd();
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="inline-flex cursor-grab active:cursor-grabbing"
+              >
+                <GripVertical size={16} className="text-gray-400 hover:text-gray-600 pointer-events-none" />
+              </span>
+            )}
             {element.type !== 'image_only_card' && element.type !== 'advanced_cards' && element.type !== 'application_card' && (
               <EditorField
                 value={opt.title || ''}
@@ -343,7 +374,7 @@ export default function CardEditor({
           {/* Image upload for image_cards */}
           {element.type === 'image_cards' && (
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+              <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                 Card Image
               </label>
               <div className="mb-3">
@@ -379,8 +410,16 @@ export default function CardEditor({
 
           {/* Image upload for image_only_card */}
           {element.type === 'image_only_card' && (
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+            <div
+              onDragStart={(e) => {
+                // Prevent card dragging when interacting with file uploader
+                if ((e.target as HTMLElement).closest('.file-uploader-area')) {
+                  return;
+                }
+                e.stopPropagation();
+              }}
+            >
+              <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                 Card Image
               </label>
               <div className="mb-3">
@@ -403,15 +442,17 @@ export default function CardEditor({
                   showLabel={false}
                 />
               ) : (
-                <FileUploader
-                  value={opt.imageUrl ? { name: 'Uploaded image', size: 0, dataUrl: opt.imageUrl } : undefined}
-                  onChange={(file, fileInfo) => handleOptionImageUpload(opt.id, file, fileInfo)}
-                  onMultipleChange={disableAddCard ? undefined : (_files, fileInfos) => handleMultipleImageUpload(fileInfos, opt.id)}
-                  accept="image/*"
-                  maxSize={3}
-                  showPreview={true}
-                  multiple={!disableAddCard}
-                />
+                <div className="file-uploader-area">
+                  <FileUploader
+                    value={opt.imageUrl ? { name: 'Uploaded image', size: 0, dataUrl: opt.imageUrl } : undefined}
+                    onChange={(file, fileInfo) => handleOptionImageUpload(opt.id, file, fileInfo)}
+                    onMultipleChange={disableAddCard ? undefined : (_files, fileInfos) => handleMultipleImageUpload(fileInfos, opt.id)}
+                    accept="image/*"
+                    maxSize={3}
+                    showPreview={true}
+                    multiple={!disableAddCard}
+                  />
+                </div>
               )}
             </div>
           )}
@@ -420,7 +461,7 @@ export default function CardEditor({
           {element.type === 'advanced_cards' && (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Heading
                 </label>
                 <EditorField
@@ -432,7 +473,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Main text
                 </label>
                 <EditorField
@@ -444,7 +485,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Link supporting text
                 </label>
                 <EditorField
@@ -468,7 +509,7 @@ export default function CardEditor({
               {opt.linkEnabled && (
                 <div className="space-y-2 pl-6 border-l-2 border-gray-200">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                       Link URL
                     </label>
                     <SystemField
@@ -481,7 +522,7 @@ export default function CardEditor({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                       Link text
                     </label>
                     <EditorField
@@ -498,9 +539,16 @@ export default function CardEditor({
 
           {/* Application card configuration */}
           {element.type === 'application_card' && expandedCards.has(opt.id) && (
-            <div className="space-y-3" style={{ border: 'none' }}>
+            <div 
+              className="space-y-3" 
+              style={{ border: 'none' }}
+              onDragStart={(e) => {
+                // Prevent card dragging when interacting with form fields
+                e.stopPropagation();
+              }}
+            >
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Job Title
                 </label>
                 <EditorField
@@ -512,7 +560,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Location
                 </label>
                 <EditorField
@@ -524,7 +572,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Department
                 </label>
                 <EditorField
@@ -536,7 +584,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Job Type
                 </label>
                 <SystemField
@@ -554,7 +602,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Job ID
                 </label>
                 <EditorField
@@ -566,7 +614,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                   Job Description
                 </label>
                 <SystemField
@@ -581,12 +629,12 @@ export default function CardEditor({
               </div>
 
               <div className="pt-3">
-                <label className="block text-base font-semibold mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-base font-medium mb-4" style={{ color: '#464F5E' }}>
                   Button Configuration
                 </label>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                       Primary Button Link (Apply)
                     </label>
                     <SystemField
@@ -598,7 +646,7 @@ export default function CardEditor({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
                       Learn More Button Link (View details)
                     </label>
                     <SystemField
@@ -614,10 +662,11 @@ export default function CardEditor({
             </div>
           )}
         </div>
-          ))}
+            );
+          })}
 
           {/* Add Card Button */}
-          {!disableAddCard && (
+          {!disableAddCard && !(element.type === 'checkboxes' && (element.config.options || []).length >= 1) && (
             <TextButton
               onClick={addCardOption}
               size="sm"
