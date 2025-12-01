@@ -199,7 +199,6 @@ export default function TemplateEditor({
       case 'text_field':
         return { label: '', hasLabel: true, placeholder: '' };
       case 'simple_cards':
-      case 'checkboxes':
         return {
           options: [
             { id: '1', title: 'Option 1' },
@@ -207,6 +206,14 @@ export default function TemplateEditor({
           ],
           selectionType: 'multiple' as 'single' | 'multiple',
           maxSelection: 2,
+        };
+      case 'checkboxes':
+        return {
+          options: [
+            { id: '1', title: 'Option 1' },
+          ],
+          selectionType: 'multiple' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'image_cards':
         return {
@@ -238,7 +245,8 @@ export default function TemplateEditor({
         };
       case 'dropdown':
         return {
-          label: 'Select an option',
+          label: '',
+          hasLabel: false,
           placeholder: 'Select an option',
           options: [
             { id: '1', title: 'Option 1' },
@@ -603,20 +611,44 @@ export default function TemplateEditor({
                                 )}
 
                                 {(element.type === 'dropdown') && (
-                                  <div className="mt-3">
-                                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                                      Placeholder
-                                    </label>
-                                    <EditorField
-                                      value={element.config.placeholder || ''}
-                                      onChange={(value) =>
+                                  <div className="mt-3 space-y-4">
+                                    <ShowLabelToggle
+                                      checked={!!element.config.hasLabel}
+                                      onChange={(checked) =>
                                         updateElement(step.id, element.id, {
-                                          config: { ...element.config, placeholder: value },
+                                          config: { ...element.config, hasLabel: checked },
                                         })
                                       }
-                                      placeholder="ex. Select industry from dropdown..."
-                                      className="w-full"
+                                      primaryColor={primaryColor}
                                     />
+                                    <div className="flex flex-col space-y-2">
+                                      {element.config.hasLabel && (
+                                        <EditorField
+                                          value={element.config.label || ''}
+                                          onChange={(value) =>
+                                            updateElement(step.id, element.id, {
+                                              config: { ...element.config, label: value },
+                                            })
+                                          }
+                                          placeholder="Label"
+                                        />
+                                      )}
+                                      <div>
+                                        <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                          Placeholder
+                                        </label>
+                                        <EditorField
+                                          value={element.config.placeholder || ''}
+                                          onChange={(value) =>
+                                            updateElement(step.id, element.id, {
+                                              config: { ...element.config, placeholder: value },
+                                            })
+                                          }
+                                          placeholder="ex. Select industry from dropdown..."
+                                          className="w-full"
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
 
@@ -733,11 +765,13 @@ export default function TemplateEditor({
                       className={`border rounded-lg transition-all border-gray-200 ${
                         draggedStepId === step.id ? 'opacity-50' : ''
                       }`}
-                      draggable={!isQuestionTemplate}
-                      onDragStart={!isQuestionTemplate ? (e) => handleStepDragStart(e, step.id) : undefined}
+                      draggable={false}
+                      onDragStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
                       onDragOver={!isQuestionTemplate ? handleStepDragOver : undefined}
                       onDrop={!isQuestionTemplate ? (e) => handleStepDrop(e, step.id) : undefined}
-                      onDragEnd={!isQuestionTemplate ? handleStepDragEnd : undefined}
                     >
                       <div
                         className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50"
@@ -745,11 +779,24 @@ export default function TemplateEditor({
                       >
                         <div className="flex items-center gap-3">
                           {!isQuestionTemplate && (
-                            <GripVertical 
-                              size={16} 
-                              className="text-gray-400 cursor-grab hover:text-gray-600" 
+                            <span
+                              draggable={true}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                handleStepDragStart(e, step.id);
+                              }}
+                              onDragEnd={(e) => {
+                                e.stopPropagation();
+                                handleStepDragEnd();
+                              }}
                               onMouseDown={(e) => e.stopPropagation()}
-                            />
+                              className="inline-flex cursor-grab active:cursor-grabbing"
+                            >
+                              <GripVertical 
+                                size={16} 
+                                className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                              />
+                            </span>
                           )}
                           <span className="font-medium" style={{ color: '#464F5E' }}>
                             {step.name}

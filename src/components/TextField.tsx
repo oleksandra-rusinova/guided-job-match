@@ -19,7 +19,7 @@ export default function TextField({
   showLabel = true, 
   value, 
   placeholder = 'Placeholder', 
-  primaryColor: _primaryColor, 
+  primaryColor: _primaryColor, // eslint-disable-line @typescript-eslint/no-unused-vars 
   disabled = false,
   helperText,
   error = false,

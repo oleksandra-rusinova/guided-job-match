@@ -8,8 +8,6 @@ interface ApplicationCardProps {
   title?: string;
   description?: string;
   imageUrl?: string;
-  selected: boolean;
-  onSelect: () => void;
   primaryColor: string;
   disabled?: boolean;
   jobTitle?: string;
@@ -27,8 +25,6 @@ export default function ApplicationCard({
   title, 
   description, 
   imageUrl,
-  selected, 
-  onSelect, 
   primaryColor,
   disabled = false,
   jobTitle,
@@ -42,6 +38,38 @@ export default function ApplicationCard({
 }: ApplicationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [isApplyButtonHovered, setIsApplyButtonHovered] = useState(false);
+
+  // Helper function to darken color for hover state
+  const getHoverColor = (color: string) => {
+    const normalized = color.trim().toLowerCase();
+    
+    // Handle hex colors
+    if (normalized.startsWith('#')) {
+      const hex = normalized.slice(1);
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const hoverR = Math.max(0, Math.floor(r * 0.85));
+      const hoverG = Math.max(0, Math.floor(g * 0.85));
+      const hoverB = Math.max(0, Math.floor(b * 0.85));
+      return `rgb(${hoverR}, ${hoverG}, ${hoverB})`;
+    }
+    
+    // Handle rgb/rgba colors
+    const rgbMatch = normalized.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) {
+      const r = parseInt(rgbMatch[1], 10);
+      const g = parseInt(rgbMatch[2], 10);
+      const b = parseInt(rgbMatch[3], 10);
+      const hoverR = Math.max(0, Math.floor(r * 0.85));
+      const hoverG = Math.max(0, Math.floor(g * 0.85));
+      const hoverB = Math.max(0, Math.floor(b * 0.85));
+      return `rgb(${hoverR}, ${hoverG}, ${hoverB})`;
+    }
+    
+    return color;
+  };
 
   // getIndicatorState is computed but not used - keeping for potential future use
   // const getIndicatorState = () => {
@@ -58,8 +86,6 @@ export default function ApplicationCard({
   let borderColor: string;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
-  } else if (selected) {
-    borderColor = primaryColor;
   } else if (isHovered) {
     borderColor = '#9CA3AF'; // gray-400
   } else {
@@ -77,17 +103,15 @@ export default function ApplicationCard({
   const displayDescription = jobDescription || description;
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      disabled={disabled}
+    <div
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] flex flex-col ${
-        disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] border flex flex-col ${
+        disabled ? 'cursor-not-allowed' : 'cursor-default'
       }`}
       style={{ 
-        outlineColor: borderColor,
+        borderColor: borderColor,
+        borderWidth: '1px',
         height: '412px',
       }}
     >
@@ -229,8 +253,16 @@ export default function ApplicationCard({
               className="flex-1"
             >
               <div 
-                className={`px-4 py-2.5 rounded-[10px] flex justify-center items-center gap-2 ${disabled ? 'bg-gray-100' : 'cursor-pointer'}`}
-                style={{ backgroundColor: disabled ? '#F3F4F6' : primaryColor }}
+                className={`px-4 py-2.5 rounded-[10px] flex justify-center items-center gap-2 transition-all duration-200 ${disabled ? 'bg-gray-100' : 'cursor-pointer'}`}
+                style={{ 
+                  backgroundColor: disabled 
+                    ? '#F3F4F6' 
+                    : (isHovered || isApplyButtonHovered) 
+                      ? getHoverColor(primaryColor) 
+                      : primaryColor 
+                }}
+                onMouseEnter={() => !disabled && setIsApplyButtonHovered(true)}
+                onMouseLeave={() => setIsApplyButtonHovered(false)}
               >
                 <div className={`justify-center text-sm font-medium font-['Poppins'] leading-5 tracking-tight`} style={{ color: disabled ? '#9CA3AF' : '#FFFFFF' }}>
                   Apply
@@ -239,8 +271,16 @@ export default function ApplicationCard({
             </a>
           ) : (
             <div 
-              className={`flex-1 px-4 py-2.5 rounded-[10px] flex justify-center items-center gap-2 ${disabled ? 'bg-gray-100' : ''}`}
-              style={{ backgroundColor: disabled ? '#F3F4F6' : primaryColor }}
+              className={`flex-1 px-4 py-2.5 rounded-[10px] flex justify-center items-center gap-2 transition-all duration-200 ${disabled ? 'bg-gray-100' : 'cursor-pointer'}`}
+              style={{ 
+                backgroundColor: disabled 
+                  ? '#F3F4F6' 
+                  : (isHovered || isApplyButtonHovered) 
+                    ? getHoverColor(primaryColor) 
+                    : primaryColor 
+              }}
+              onMouseEnter={() => !disabled && setIsApplyButtonHovered(true)}
+              onMouseLeave={() => setIsApplyButtonHovered(false)}
             >
               <div className={`justify-center text-sm font-medium font-['Poppins'] leading-5 tracking-tight`} style={{ color: disabled ? '#9CA3AF' : '#FFFFFF' }}>
                 Apply
@@ -249,7 +289,7 @@ export default function ApplicationCard({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 

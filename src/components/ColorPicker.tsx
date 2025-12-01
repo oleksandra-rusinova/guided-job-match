@@ -169,9 +169,9 @@ function rgbaToRgb(rgba: RGBA): string {
 }
 
 function rgbaToHsl(rgba: RGBA): string {
-  let r = rgba.r / 255;
-  let g = rgba.g / 255;
-  let b = rgba.b / 255;
+  const r = rgba.r / 255;
+  const g = rgba.g / 255;
+  const b = rgba.b / 255;
   
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
@@ -326,6 +326,9 @@ export default function ColorPicker({ selectedColor, onColorChange }: ColorPicke
     { id: 'hsl', title: 'HSL' }
   ];
 
+  // Check if selected color is a custom color (not in preset colors)
+  const isCustomColor = selectedColor && !PRESET_COLORS.includes(selectedColor);
+
   return (
     <div>
       <div className="flex gap-2 mb-4 flex-wrap">
@@ -342,6 +345,18 @@ export default function ColorPicker({ selectedColor, onColorChange }: ColorPicke
             } as React.CSSProperties}
           />
         ))}
+        {/* Show custom color if it's not a preset */}
+        {isCustomColor && (
+          <button
+            onClick={() => onColorChange(selectedColor)}
+            className={`w-8 h-8 rounded-lg transition-all hover:scale-105 ring-2 ring-offset-2`}
+            style={{
+              backgroundColor: selectedColor,
+              '--tw-ring-color': selectedColor
+            } as React.CSSProperties}
+            title={`Custom color: ${selectedColor}`}
+          />
+        )}
         <div className="relative group">
           <button
             onClick={() => setShowAdvanced(true)}

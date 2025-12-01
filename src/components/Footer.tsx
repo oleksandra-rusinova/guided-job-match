@@ -47,27 +47,29 @@ export default function Footer({
         {isApplicationStep ? (
           /* Application step: only Back button */
           <div className="flex items-center gap-4">
+            {canGoBack && (
+              <SecondaryButton
+                onClick={onBack}
+                icon={<ArrowLeft size={20} />}
+                aria-label="Previous"
+              >
+                {''}
+              </SecondaryButton>
+            )}
+          </div>
+        ) : (
+          /* Regular step: Back and Next buttons */
+        <div className="flex items-center gap-4">
+          {/* Back button with arrow - only show if can go back */}
+          {canGoBack && (
             <SecondaryButton
               onClick={onBack}
-              disabled={!canGoBack}
               icon={<ArrowLeft size={20} />}
               aria-label="Previous"
             >
               {''}
             </SecondaryButton>
-          </div>
-        ) : (
-          /* Regular step: Back and Next buttons */
-        <div className="flex items-center gap-4">
-          {/* Back button with arrow */}
-          <SecondaryButton
-            onClick={onBack}
-            disabled={!canGoBack}
-            icon={<ArrowLeft size={20} />}
-            aria-label="Previous"
-          >
-            {''}
-          </SecondaryButton>
+          )}
 
           {/* Next button with primary color */}
           <PrimaryButton

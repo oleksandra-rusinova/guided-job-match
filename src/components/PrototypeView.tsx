@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { X, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Trash2, Plus, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
+
+type OptionType = NonNullable<Element['config']['options']>[number];
 import { savePrototype } from '../utils/storage';
 import { useRealtimePrototype } from '../hooks/useRealtimePrototype';
 import { useAutoSave } from '../hooks/useAutoSave';
@@ -18,7 +20,7 @@ import SimpleCard from './widgets/SimpleCard';
 import ImageCard from './widgets/ImageCard';
 import ImageOnlyCard from './widgets/ImageOnlyCard';
 import AdvancedCard from './widgets/AdvancedCard';
-import YesNoCards from './widgets/YesNoCards';
+import YesNoCards, { YesNoCard } from './widgets/YesNoCards';
 import ApplicationCard from './widgets/ApplicationCard';
 import CardEditor from './CardEditor';
 import Footer from './Footer';
@@ -50,10 +52,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const [currentPage, setCurrentPage] = useState(0);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [stepsState, setStepsState] = useState<Step[]>(prototype?.steps || []);
+  const [originalStepsState, setOriginalStepsState] = useState<Step[]>(prototype?.steps || []);
   const [fieldValues, setFieldValues] = useState<Record<string, string | string[]>>({});
   const [openElementMenuStepId, setOpenElementMenuStepId] = useState<string | null>(null);
   const [hoveredCheckbox, setHoveredCheckbox] = useState<string | null>(null);
   const [expandedCardElements, setExpandedCardElements] = useState<Set<string>>(new Set());
+  const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
+  const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
+  const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
   const totalPages = stepsState.length;
 
   const canGoBack = currentPage > 0;
@@ -65,8 +71,19 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   useEffect(() => {
     if (prototype && prototype.steps) {
       setStepsState(prototype.steps);
+      // Update original state when prototype changes (but not when editor is open)
+      if (!isEditorOpen) {
+        setOriginalStepsState(prototype.steps);
+      }
     }
-  }, [prototype]);
+  }, [prototype, isEditorOpen]);
+
+  // Store original steps state when editor opens
+  useEffect(() => {
+    if (isEditorOpen && prototype?.steps) {
+      setOriginalStepsState(prototype.steps);
+    }
+  }, [isEditorOpen, prototype]);
 
   // Build current prototype state for auto-save when editing
   const currentPrototypeForSave: Prototype | null = prototype && isEditorOpen ? {
@@ -104,40 +121,6 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       setEditing(false);
     }
   }, [isEditorOpen, currentStep, currentPage, setEditing]);
-
-  // Show loading state if prototype is not loaded yet
-  if (isLoading) {
-    console.log('PrototypeView: Showing loading state');
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading prototype...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state if prototype failed to load
-  if (!prototype) {
-    console.log('PrototypeView: Prototype not found');
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 text-lg mb-4">Prototype not found</p>
-          <p className="text-gray-500 mb-6">The prototype you're looking for doesn't exist or couldn't be loaded.</p>
-          <button
-            onClick={onExit}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  console.log('PrototypeView: Rendering prototype content', { stepsCount: prototype.steps?.length || 0 });
 
   // Calculate if next button should be disabled
   const isNextDisabled = useMemo(() => {
@@ -189,6 +172,47 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     };
   }, [canGoBack, canGoNext, isEditorOpen]);
 
+  // Check if there are changes to save
+  const hasChanges = useMemo(() => {
+    if (!isEditorOpen) return false;
+    // Deep compare stepsState with originalStepsState
+    return JSON.stringify(stepsState) !== JSON.stringify(originalStepsState);
+  }, [stepsState, originalStepsState, isEditorOpen]);
+
+  // Show loading state if prototype is not loaded yet
+  if (isLoading) {
+    console.log('PrototypeView: Showing loading state');
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading prototype...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if prototype failed to load
+  if (!prototype) {
+    console.log('PrototypeView: Prototype not found');
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 text-lg mb-4">Prototype not found</p>
+          <p className="text-gray-500 mb-6">The prototype you're looking for doesn't exist or couldn't be loaded.</p>
+          <button
+            onClick={onExit}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('PrototypeView: Rendering prototype content', { stepsCount: prototype.steps?.length || 0 });
+
   const updateElement = (stepIndex: number, elementId: string, updates: Partial<Element>) => {
     setStepsState(prev =>
       prev.map((s, idx) =>
@@ -239,6 +263,12 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       config: getDefaultElementConfig(type),
     };
 
+    // Expand card elements by default when adding them
+    const isCardType = type === 'simple_cards' || type === 'image_cards' || type === 'image_only_card' || type === 'advanced_cards';
+    if (isCardType) {
+      setExpandedCardElements(prev => new Set(prev).add(newElement.id));
+    }
+
     setStepsState(prev =>
       prev.map(step =>
         step.id === stepId
@@ -246,7 +276,34 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           : step
       )
     );
+
+    // Set the newly added element ID for scroll animation
+    setNewlyAddedElementId(newElement.id);
   };
+
+  // Scroll to newly added element in edit mode
+  useEffect(() => {
+    if (newlyAddedElementId && isEditorOpen) {
+      // Use requestAnimationFrame and a delay to ensure DOM is fully updated
+      const scrollTimeout = setTimeout(() => {
+        const element = document.getElementById(`element-editor-${newlyAddedElementId}`);
+        if (element) {
+          // Use requestAnimationFrame for smoother animation
+          requestAnimationFrame(() => {
+            element.scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'center',
+              inline: 'nearest'
+            });
+          });
+        }
+        // Reset the newly added element ID
+        setNewlyAddedElementId(null);
+      }, 300); // Delay to account for element rendering
+
+      return () => clearTimeout(scrollTimeout);
+    }
+  }, [newlyAddedElementId, isEditorOpen]);
 
   const deleteElement = (stepId: string, elementId: string) => {
     setStepsState(prev =>
@@ -258,12 +315,48 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     );
   };
 
+  const handleElementDragStart = (e: React.DragEvent, stepId: string, elementId: string) => {
+    setDraggedElementId(elementId);
+    setDraggedElementStepId(stepId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleElementDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleElementDrop = (e: React.DragEvent, stepId: string, targetElementId: string) => {
+    e.preventDefault();
+    if (!draggedElementId || !draggedElementStepId || draggedElementId === targetElementId || draggedElementStepId !== stepId) return;
+
+    const step = stepsState.find(s => s.id === stepId);
+    if (!step) return;
+
+    const draggedIndex = step.elements.findIndex(el => el.id === draggedElementId);
+    const targetIndex = step.elements.findIndex(el => el.id === targetElementId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newElements = [...step.elements];
+    const [draggedElement] = newElements.splice(draggedIndex, 1);
+    newElements.splice(targetIndex, 0, draggedElement);
+
+    updateStep(stepId, { elements: newElements });
+    setDraggedElementId(null);
+    setDraggedElementStepId(null);
+  };
+
+  const handleElementDragEnd = () => {
+    setDraggedElementId(null);
+    setDraggedElementStepId(null);
+  };
+
   const getDefaultElementConfig = (type: ElementType) => {
     switch (type) {
       case 'text_field':
         return { label: '', hasLabel: true, placeholder: '' };
       case 'simple_cards':
-      case 'checkboxes':
         return {
           options: [
             { id: '1', title: 'Option 1' },
@@ -271,6 +364,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           ],
           selectionType: 'multiple' as 'single' | 'multiple',
           maxSelection: 2,
+        };
+      case 'checkboxes':
+        return {
+          options: [
+            { id: '1', title: 'Option 1' },
+          ],
+          selectionType: 'multiple' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'image_cards':
         return {
@@ -302,7 +403,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
         };
       case 'dropdown':
         return {
-          label: 'Select an option',
+          label: '',
+          hasLabel: false,
           placeholder: 'Select an option',
           options: [
             { id: '1', title: 'Option 1' },
@@ -341,7 +443,6 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     }
   };
 
-
   const handleSave = async () => {
     const updatedPrototype: Prototype = {
       ...prototype,
@@ -354,6 +455,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       updatePrototypeInState(result.data);
       // Also update local stepsState to match
       setStepsState(result.data.steps);
+      // Update original state to reflect saved state
+      setOriginalStepsState(result.data.steps);
     }
     setIsEditorOpen(false);
   };
@@ -431,7 +534,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             )}
           </div>
           {currentStep.description && (
-            <p className="text-gray-600 mt-2 text-center w-full">{currentStep.description}</p>
+            <p className="text-gray-500 text-base font-normal font-['Poppins'] leading-6 tracking-tight text-center w-full" style={{ marginTop: '8px' }}>{currentStep.description}</p>
           )}
         </div>
       </div>
@@ -439,22 +542,38 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
 
     // Render elements (cards, fields, etc.)
     const renderElements = (isSplitScreen: boolean = false) => {
+      // Count field elements (text_field, dropdown, calendar_field, checkboxes)
+      const fieldTypes = ['text_field', 'dropdown', 'calendar_field', 'checkboxes'];
+      const fieldElements = currentStep.elements.filter(el => fieldTypes.includes(el.type));
+      const hasMultipleFields = fieldElements.length > 1;
+      
       return (
-        <div className={`w-full flex flex-col ${isSplitScreen ? 'items-start' : 'items-start'}`} style={{ gap: '24px' }}>
+        <div className={`w-full flex flex-col ${isSplitScreen ? 'items-start' : 'items-center'}`}>
           {currentStep.elements.map((el, index) => {
+            const isFieldElement = fieldTypes.includes(el.type);
+            const prevElement = index > 0 ? currentStep.elements[index - 1] : null;
+            const prevIsFieldElement = prevElement ? fieldTypes.includes(prevElement.type) : false;
+            // Add 24px margin-top only if this is a field element and previous element is also a field element
+            // When there are multiple fields, ensure no vertical padding/margins except the 24px gap
+            const fieldGapStyle = (isFieldElement && prevIsFieldElement && hasMultipleFields) 
+              ? { marginTop: '24px', marginBottom: '0', paddingTop: '0', paddingBottom: '0' } 
+              : (isFieldElement && hasMultipleFields)
+                ? { marginTop: '0', marginBottom: '0', paddingTop: '0', paddingBottom: '0' }
+                : {};
+            
             if (el.type === 'text_field') {
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? {} 
-                : { marginTop: '120px', marginBottom: '120px' };
+                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                : hasMultipleFields 
+                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
-                ? { width: '100%' } 
-                : { width: '680px' };
-              const wrapperClass = isSplitScreen 
-                ? 'flex w-full flex-col items-start gap-3' 
-                : 'flex w-full flex-col items-center gap-3';
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className={wrapperClass} style={containerStyle}>
+                <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     <TextField
                       label={el.config.label || 'Label'}
@@ -470,18 +589,18 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             }
             
             if (el.type === 'dropdown') {
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? {} 
-                : { marginTop: '120px', marginBottom: '120px' };
+                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                : hasMultipleFields 
+                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
-                ? { width: '100%' } 
-                : { width: '680px' };
-              const wrapperClass = isSplitScreen 
-                ? 'flex w-full flex-col items-start gap-3' 
-                : 'flex w-full flex-col items-center gap-3';
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className={wrapperClass} style={containerStyle}>
+                <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     <DropdownField
                       value={typeof fieldValues[el.id] === 'string' ? fieldValues[el.id] as string : ''}
@@ -489,6 +608,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       placeholder={el.config.placeholder || 'Select an option'}
                       primaryColor={prototype.primaryColor}
                       options={el.config.options || []}
+                      label={el.config.label || 'Label'}
+                      showLabel={!!el.config.hasLabel}
                     />
                   </div>
                 </div>
@@ -496,18 +617,18 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             }
 
             if (el.type === 'calendar_field') {
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? {} 
-                : { marginTop: '120px', marginBottom: '120px' };
+                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                : hasMultipleFields 
+                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
-                ? { width: '100%' } 
-                : { width: '680px' };
-              const wrapperClass = isSplitScreen 
-                ? 'flex w-full flex-col items-start gap-3' 
-                : 'flex w-full flex-col items-center gap-3';
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className={wrapperClass} style={containerStyle}>
+                <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     <CalendarField
                       label={el.config.label || 'Label'}
@@ -529,8 +650,11 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
+              // In split screen mode, always use 2 columns
               let gridCols = 'grid-cols-1';
-              if (numCards === 2 || numCards === 3) {
+              if (isSplitScreen) {
+                gridCols = 'grid-cols-2';
+              } else if (numCards === 2 || numCards === 3) {
                 gridCols = `grid-cols-${numCards}`;
               } else if (numCards === 4) {
                 gridCols = 'grid-cols-2';
@@ -579,7 +703,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               return (
                 <div key={el.id} className="w-full" style={cardPadding}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: any) => (
+                    {options.map((opt: OptionType) => (
                       <SimpleCard
                         key={opt.id}
                         title={opt.title || 'Option'}
@@ -601,8 +725,11 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
+              // In split screen mode, always use 2 columns
               let gridCols = 'grid-cols-1';
-              if (numCards === 2 || numCards === 3) {
+              if (isSplitScreen) {
+                gridCols = 'grid-cols-2';
+              } else if (numCards === 2 || numCards === 3) {
                 gridCols = `grid-cols-${numCards}`;
               } else if (numCards === 4) {
                 gridCols = 'grid-cols-2';
@@ -651,7 +778,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               return (
                 <div key={el.id} className="w-full" style={cardPadding}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: any) => (
+                    {options.map((opt: OptionType) => (
                       <ImageCard
                         key={opt.id}
                         id={opt.id}
@@ -694,20 +821,20 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 }
               };
               
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? {} 
-                : { marginTop: '120px', marginBottom: '120px' };
+                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                : hasMultipleFields 
+                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
-                ? { width: '100%' } 
-                : { width: '680px' };
-              const wrapperClass = isSplitScreen 
-                ? 'flex w-full flex-col items-start gap-3' 
-                : 'flex w-full flex-col items-center gap-3';
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className={wrapperClass} style={containerStyle}>
+                <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle} className="space-y-3">
-                    {options.map((opt: any) => {
+                    {options.map((opt: OptionType) => {
                       const isSelected = currentValues.includes(opt.id);
                       const isDisabled = !isSelected && 
                         selectionType === 'multiple' && 
@@ -781,8 +908,11 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
+              // In split screen mode, always use 2 columns
               let gridCols = 'grid-cols-1';
-              if (numCards === 2 || numCards === 3) {
+              if (isSplitScreen) {
+                gridCols = 'grid-cols-2';
+              } else if (numCards === 2 || numCards === 3) {
                 gridCols = `grid-cols-${numCards}`;
               } else if (numCards === 4) {
                 gridCols = 'grid-cols-2';
@@ -831,7 +961,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               return (
                 <div key={el.id} className="w-full" style={cardPadding}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: any) => (
+                    {options.map((opt: OptionType) => (
                       <AdvancedCard
                         key={opt.id}
                         id={opt.id}
@@ -859,8 +989,11 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
+              // In split screen mode, always use 2 columns
               let gridCols = 'grid-cols-1';
-              if (numCards === 2 || numCards === 3) {
+              if (isSplitScreen) {
+                gridCols = 'grid-cols-2';
+              } else if (numCards === 2 || numCards === 3) {
                 gridCols = `grid-cols-${numCards}`;
               } else if (numCards === 4) {
                 gridCols = 'grid-cols-2';
@@ -909,7 +1042,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               return (
                 <div key={el.id} className="w-full" style={cardPadding}>
                   <div className={`grid ${gridCols}`} style={{ gap: '24px' }}>
-                    {options.map((opt: any) => (
+                    {options.map((opt: OptionType) => (
                       <ImageOnlyCard
                         key={opt.id}
                         id={opt.id}
@@ -946,6 +1079,30 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 ? { paddingTop: '120px', paddingBottom: '0px' } 
                 : {};
               
+              // In split screen mode, use grid layout with 2 columns and 24px gap
+              if (isSplitScreen) {
+                return (
+                  <div key={el.id} className="w-full" style={cardPadding}>
+                    <div className="grid grid-cols-2 gap-[24px]">
+                      <YesNoCard
+                        text={yesText}
+                        selected={selected === 'yes'}
+                        onSelect={() => handleSelect('yes')}
+                        primaryColor={prototype.primaryColor}
+                        className="w-full"
+                      />
+                      <YesNoCard
+                        text={noText}
+                        selected={selected === 'no'}
+                        onSelect={() => handleSelect('no')}
+                        primaryColor={prototype.primaryColor}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                );
+              }
+              
               return (
                 <div key={el.id} className="w-full" style={cardPadding}>
                   <YesNoCards
@@ -961,50 +1118,19 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
 
             if (el.type === 'application_card') {
               const options = el.config.options || [];
-              const value = fieldValues[el.id];
-              const selectionType = el.config.selectionType || 'single';
-              const maxSelection = el.config.maxSelection || 1;
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
+              // In split screen mode, always use 2 columns
               // For more than 3 cards: always use 3 columns per row
               let gridCols = 'grid-cols-1';
-              if (numCards === 2 || numCards === 3) {
+              if (isSplitScreen) {
+                gridCols = 'grid-cols-2';
+              } else if (numCards === 2 || numCards === 3) {
                 gridCols = `grid-cols-${numCards}`;
               } else if (numCards > 3) {
                 gridCols = 'grid-cols-3';
               }
-              
-              const handleCardSelect = (optId: string) => {
-                if (selectionType === 'single') {
-                  setFieldValues(v => ({ ...v, [el.id]: optId }));
-                } else {
-                  // Multiple selection logic
-                  const currentValues = Array.isArray(value) ? value : (typeof value === 'string' && value ? [value] : []);
-                  const isSelected = currentValues.includes(optId);
-                  
-                  if (isSelected) {
-                    // Remove from selection
-                    const newValues = currentValues.filter(id => id !== optId);
-                    setFieldValues(v => ({ ...v, [el.id]: newValues }));
-                  } else {
-                    // Add to selection if under max limit
-                    if (currentValues.length < maxSelection) {
-                      const newValues = [...currentValues, optId];
-                      setFieldValues(v => ({ ...v, [el.id]: newValues }));
-                    }
-                  }
-                }
-              };
-              
-              const isCardSelected = (optId: string) => {
-                if (selectionType === 'single') {
-                  return value === optId;
-                } else {
-                  const currentValues = Array.isArray(value) ? value : (typeof value === 'string' && value ? [value] : []);
-                  return currentValues.includes(optId);
-                }
-              };
               
               // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
               // Skip padding in split screen mode or for application steps (they use header marginBottom instead)
@@ -1025,21 +1151,20 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 : {};
               
               // Use flexbox with fixed width for 1 or 2 cards, grid for others
-              const useFixedWidth = numCards === 1 || numCards === 2;
+              // In split screen mode, always use grid with 2 columns
+              const useFixedWidth = !isSplitScreen && (numCards === 1 || numCards === 2);
               
               return (
                 <div key={el.id} className="w-full" style={{ ...cardPadding, ...spacingOverride }}>
                   {useFixedWidth ? (
                     <div className="flex justify-center" style={{ gap: '24px' }}>
-                      {options.map((opt: any) => (
+                      {options.map((opt: OptionType) => (
                         <div key={opt.id} style={{ width: '368px' }}>
                           <ApplicationCard
                             id={opt.id}
                             title={opt.title || 'Application'}
                             description={opt.description}
                             imageUrl={opt.imageUrl}
-                            selected={isCardSelected(opt.id)}
-                            onSelect={() => handleCardSelect(opt.id)}
                             primaryColor={prototype.primaryColor}
                             jobTitle={opt.jobTitle}
                             location={opt.location}
@@ -1053,15 +1178,13 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     </div>
                   ) : (
                   <div className={`grid ${gridCols} justify-center`} style={{ gap: '24px' }}>
-                    {options.map((opt: any) => (
-                      <div key={opt.id} style={numCards > 3 ? { width: '368px' } : {}}>
+                    {options.map((opt: OptionType) => (
+                      <div key={opt.id} style={numCards > 3 && !isSplitScreen ? { width: '368px' } : {}}>
                         <ApplicationCard
                           id={opt.id}
                           title={opt.title || 'Application'}
                           description={opt.description}
                           imageUrl={opt.imageUrl}
-                          selected={isCardSelected(opt.id)}
-                          onSelect={() => handleCardSelect(opt.id)}
                           primaryColor={prototype.primaryColor}
                           jobTitle={opt.jobTitle}
                           location={opt.location}
@@ -1084,7 +1207,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             if (el.type === 'dropdown') {
               return (
                 <div key={el.id} className="flex w-full flex-col items-start gap-3">
-                  {el.config.label && (
+                  {el.config.hasLabel && el.config.label && (
                     <label className="block text-sm font-medium text-gray-700">{el.config.label}</label>
                   )}
                   <select className="w-full px-5 py-3.5 border border-gray-200 rounded-[16px] focus:ring-4 focus:border-gray-300"
@@ -1109,7 +1232,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           <img 
             src={currentStep.imageUrl} 
             alt="Step visual" 
-            className="w-full h-80 object-cover rounded-[16px]" 
+            className="w-full h-80 object-cover rounded-[16px] shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)]" 
           />
           {/* Image title and subtitle if present */}
           {currentStep.imageHasTitle && (currentStep.imageTitle || currentStep.imageSubtitle) && (
@@ -1138,7 +1261,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       return (
         <div className="flex flex-col items-center">
           {currentStep.isApplicationStep ? applicationStepHeader : questionHeader}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 items-start w-full" style={{ gap: '32px' }}>
             {currentStep.imagePosition === 'left' ? (
               <>
                 {imageSection}
@@ -1448,16 +1571,71 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                           Application cards configuration
                         </h4>
                         {applicationCardElements.map((el) => {
+                          const canDrag = applicationCardElements.length > 1;
+                          const isDragging = draggedElementId === el.id;
+                          
                           return (
-                            <div key={el.id} className="mb-4">
-                              <CardEditor
-                                element={el}
-                                stepIndex={currentPage}
-                                onUpdateElement={updateElement}
-                                primaryColor={prototype.primaryColor}
-                                showSelectionConfig={false}
-                                disableAddCard={false}
-                              />
+                            <div 
+                              key={el.id} 
+                              id={`element-editor-${el.id}`} 
+                              className={`mb-4 border border-gray-200 rounded-lg bg-gray-100 transition-colors ${
+                                isDragging ? 'opacity-50' : ''
+                              }`}
+                              draggable={false}
+                              onDragStart={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onDragOver={canDrag ? handleElementDragOver : undefined}
+                              onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
+                            >
+                              <div className="flex items-center justify-between p-3 border-b border-gray-200">
+                                <div className="flex items-center gap-2">
+                                  {canDrag && (
+                                    <span
+                                      draggable={true}
+                                      onDragStart={(e) => {
+                                        e.stopPropagation();
+                                        handleElementDragStart(e, currentStep.id, el.id);
+                                      }}
+                                      onDragEnd={(e) => {
+                                        e.stopPropagation();
+                                        handleElementDragEnd();
+                                      }}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      className="inline-flex cursor-grab active:cursor-grabbing"
+                                    >
+                                      <GripVertical 
+                                        size={16} 
+                                        className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                      />
+                                    </span>
+                                  )}
+                                  <span className="text-base font-medium" style={{ color: '#464F5E' }}>
+                                    {getElementLabel(el.type)}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteElement(currentStep.id, el.id);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Delete element"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                              <div className="p-3">
+                                <CardEditor
+                                  element={el}
+                                  stepIndex={currentPage}
+                                  onUpdateElement={updateElement}
+                                  primaryColor={prototype.primaryColor}
+                                  showSelectionConfig={false}
+                                  disableAddCard={false}
+                                />
+                              </div>
                             </div>
                           );
                         })}
@@ -1468,9 +1646,24 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     {otherElements.map((el) => {
                       const isExpanded = expandedCardElements.has(el.id);
                       const isCardType = el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards';
+                      const canDrag = otherElements.length > 1;
+                      const isDragging = draggedElementId === el.id;
                       
                       return (
-                  <div key={el.id} className="border border-gray-200 rounded-lg">
+                  <div 
+                    key={el.id} 
+                    id={`element-editor-${el.id}`} 
+                    className={`border border-gray-200 rounded-lg bg-gray-100 transition-colors ${
+                      isDragging ? 'opacity-50' : ''
+                    }`}
+                    draggable={false}
+                    onDragStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDragOver={canDrag ? handleElementDragOver : undefined}
+                    onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
+                  >
                     <div 
                       className={`flex items-center justify-between p-3 ${isCardType ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
                       onClick={isCardType ? () => {
@@ -1484,6 +1677,27 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       } : undefined}
                     >
                       <div className="flex items-center gap-2">
+                        {canDrag && (
+                          <span
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              handleElementDragStart(e, currentStep.id, el.id);
+                            }}
+                            onDragEnd={(e) => {
+                              e.stopPropagation();
+                              handleElementDragEnd();
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className="inline-flex cursor-grab active:cursor-grabbing"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <GripVertical 
+                              size={16} 
+                              className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                            />
+                          </span>
+                        )}
                         {isCardType && (isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />)}
                     <span className="text-base font-medium" style={{ color: '#464F5E' }}>{getElementLabel(el.type)}</span>
                       </div>
@@ -1499,9 +1713,9 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     </button>
                   </div>
                     {(!isCardType || isExpanded) && (
-                      <div className="p-3 space-y-3">
+                      <div className="pt-1 px-3 pb-3 space-y-3">
                   {el.type === 'text_field' ? (
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-2">
                       <ShowLabelToggle
                         checked={!!el.config.hasLabel}
                         onChange={(checked) =>
@@ -1537,25 +1751,49 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                   ) : null}
 
                   {el.type === 'dropdown' ? (
-                    <div className="mt-3">
-                      <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                        Placeholder
-                      </label>
-                      <EditorField
-                        value={el.config.placeholder || ''}
-                        onChange={(value) =>
+                    <div className="space-y-2">
+                      <ShowLabelToggle
+                        checked={!!el.config.hasLabel}
+                        onChange={(checked) =>
                           updateElement(currentPage, el.id, {
-                            config: { ...el.config, placeholder: value },
+                            config: { ...el.config, hasLabel: checked },
                           })
                         }
-                        placeholder="ex. Select industry from dropdown..."
-                        className="w-full"
+                        primaryColor={prototype.primaryColor}
                       />
+                      <div className="flex flex-col space-y-2">
+                        {el.config.hasLabel && (
+                          <EditorField
+                            value={el.config.label || ''}
+                            onChange={(value) =>
+                              updateElement(currentPage, el.id, {
+                                config: { ...el.config, label: value },
+                              })
+                            }
+                            placeholder="Label"
+                          />
+                        )}
+                        <div>
+                          <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                            Placeholder
+                          </label>
+                          <EditorField
+                            value={el.config.placeholder || ''}
+                            onChange={(value) =>
+                              updateElement(currentPage, el.id, {
+                                config: { ...el.config, placeholder: value },
+                              })
+                            }
+                            placeholder="ex. Select industry from dropdown..."
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : null}
 
                   {el.type === 'calendar_field' ? (
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-2">
                       <ShowLabelToggle
                         checked={!!el.config.hasLabel}
                         onChange={(checked) =>
@@ -1656,6 +1894,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               <PrimaryButton
                 onClick={handleSave}
                 className="w-full"
+                disabled={!hasChanges}
               >
                 Save
               </PrimaryButton>

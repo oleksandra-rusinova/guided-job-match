@@ -20,6 +20,7 @@ interface HomePageProps {
 export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpenPrototype, onEditPrototype, onDuplicatePrototype, onDeletePrototype, onOpenTemplates }: HomePageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   const handleCopyUrl = (id: string) => {
     const url = `${window.location.origin}/prototype/${id}`;
@@ -34,15 +35,29 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ backgroundColor: '#F8F9FB' }}>
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-semibold" style={{ color: '#464F5E' }}>
-                GJM Prototype Builder
-              </h1>
-              <p className="text-gray-500 text-md">Create and manage Guided Job Match prototypes</p>
+            <div className="flex items-center gap-4">
+              {!logoError ? (
+                <img 
+                  src="/logo.png" 
+                  alt="Logo" 
+                  className="h-12 w-12 object-contain rounded-lg"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <div className="h-12 w-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                  <span className="text-gray-400 text-xs">Logo</span>
+                </div>
+              )}
+              <div>
+                <h1 className="text-xl font-semibold" style={{ color: '#464F5E' }}>
+                  GJM Prototype Builder
+                </h1>
+                <p className="text-gray-500 text-md">Create and manage Guided Job Match prototypes</p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <SecondaryButton onClick={onOpenTemplates} icon={<Bookmark size={18} />}>

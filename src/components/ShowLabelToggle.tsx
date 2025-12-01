@@ -10,6 +10,7 @@ interface ShowLabelToggleProps {
 export default function ShowLabelToggle({ checked, onChange, label = 'Show label', primaryColor: _primaryColor }: ShowLabelToggleProps) {
   // In editor mode, use system default color. In view mode, use prototype's branding color
   // Since ShowLabelToggle is only used in editor mode (CreatePrototype), we ignore primaryColor
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // and let Checkbox use its default system color (#4D3EE0)
   return (
     <Checkbox

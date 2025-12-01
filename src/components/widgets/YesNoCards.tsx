@@ -7,9 +7,10 @@ interface YesNoCardProps {
   onSelect: () => void;
   primaryColor: string;
   disabled?: boolean;
+  className?: string;
 }
 
-function YesNoCard({ text, selected, onSelect, primaryColor, disabled = false }: YesNoCardProps) {
+export function YesNoCard({ text, selected, onSelect, primaryColor, disabled = false, className = '' }: YesNoCardProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   const getOutlineClasses = () => {
@@ -51,7 +52,7 @@ function YesNoCard({ text, selected, onSelect, primaryColor, disabled = false }:
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`w-[328px] min-h-40 pl-6 pr-4 py-4 bg-white rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] ${getOutlineClasses()} inline-flex justify-start items-center gap-2.5 transition-all relative ${
+      className={`${className || 'w-[328px]'} min-h-40 pl-6 pr-4 py-4 bg-white rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] ${getOutlineClasses()} ${className ? 'w-full flex' : 'inline-flex'} justify-start items-center gap-2.5 transition-all relative ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{

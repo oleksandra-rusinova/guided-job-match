@@ -116,6 +116,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
   const [newlyAddedStepId, setNewlyAddedStepId] = useState<string | null>(null);
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
+  const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
   
   // Template-related state
   const [showQuestionTemplateModal, setShowQuestionTemplateModal] = useState(false);
@@ -176,12 +178,12 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     }
   };
 
-  const handleLogoUpload = (file: File | null, fileInfo: any) => {
+  const handleLogoUpload = (file: File | null, fileInfo: { name: string; size: number; dataUrl: string } | null) => {
     setLogoFile(file);
     setLogoUrl(fileInfo?.dataUrl || '');
   };
 
-  const handleStepImageUpload = (stepId: string, _file: File | null, fileInfo: any) => {
+  const handleStepImageUpload = (stepId: string, _file: File | null, fileInfo: { name: string; size: number; dataUrl: string } | null) => {
     updateStep(stepId, { imageUrl: fileInfo?.dataUrl || '' });
   };
 
@@ -370,6 +372,43 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     setDraggedStepId(null);
   };
 
+  const handleElementDragStart = (e: React.DragEvent, stepId: string, elementId: string) => {
+    setDraggedElementId(elementId);
+    setDraggedElementStepId(stepId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleElementDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleElementDrop = (e: React.DragEvent, stepId: string, targetElementId: string) => {
+    e.preventDefault();
+    if (!draggedElementId || !draggedElementStepId || draggedElementId === targetElementId || draggedElementStepId !== stepId) return;
+
+    const step = steps.find(s => s.id === stepId);
+    if (!step) return;
+
+    const draggedIndex = step.elements.findIndex(el => el.id === draggedElementId);
+    const targetIndex = step.elements.findIndex(el => el.id === targetElementId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newElements = [...step.elements];
+    const [draggedElement] = newElements.splice(draggedIndex, 1);
+    newElements.splice(targetIndex, 0, draggedElement);
+
+    updateStep(stepId, { elements: newElements });
+    setDraggedElementId(null);
+    setDraggedElementStepId(null);
+  };
+
+  const handleElementDragEnd = () => {
+    setDraggedElementId(null);
+    setDraggedElementStepId(null);
+  };
+
   // Card element types that should be mutually exclusive
   const CARD_ELEMENT_TYPES: ElementType[] = ['simple_cards', 'image_cards', 'advanced_cards', 'image_only_card', 'yes_no_cards'];
   const APPLICATION_CARD_TYPE: ElementType = 'application_card';
@@ -399,6 +438,11 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       config: getDefaultElementConfig(type),
     };
 
+    // Ensure the step is expanded before adding the element
+    if (expandedStepId !== stepId) {
+      setExpandedStepId(stepId);
+    }
+
     setSteps(steps.map(step =>
       step.id === stepId
         ? { ...step, elements: [...step.elements, newElement] }
@@ -412,21 +456,27 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   // Scroll to newly added element
   useEffect(() => {
     if (newlyAddedElementId) {
-      const element = document.getElementById(`element-${newlyAddedElementId}`);
-      if (element) {
-        // Small delay to ensure DOM is updated
-        setTimeout(() => {
-          element.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center',
-            inline: 'nearest'
+      // Use requestAnimationFrame and a longer delay to ensure DOM is fully updated
+      // This accounts for step expansion animation and element rendering
+      const scrollTimeout = setTimeout(() => {
+        const element = document.getElementById(`element-${newlyAddedElementId}`);
+        if (element) {
+          // Use requestAnimationFrame for smoother animation
+          requestAnimationFrame(() => {
+            element.scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'center',
+              inline: 'nearest'
+            });
           });
-          // Reset the newly added element ID
-          setNewlyAddedElementId(null);
-        }, 100);
-      }
+        }
+        // Reset the newly added element ID
+        setNewlyAddedElementId(null);
+      }, 300); // Increased delay to account for step expansion
+
+      return () => clearTimeout(scrollTimeout);
     }
-  }, [newlyAddedElementId]);
+  }, [newlyAddedElementId, expandedStepId]);
 
   // Scroll to newly added step
   useEffect(() => {
@@ -452,7 +502,6 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       case 'text_field':
         return { label: '', hasLabel: true, placeholder: '' };
       case 'simple_cards':
-      case 'checkboxes':
         return {
           options: [
             { id: '1', title: 'Option 1' },
@@ -460,6 +509,14 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
           ],
           selectionType: 'multiple' as 'single' | 'multiple',
           maxSelection: 2,
+        };
+      case 'checkboxes':
+        return {
+          options: [
+            { id: '1', title: 'Option 1' },
+          ],
+          selectionType: 'multiple' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'image_cards':
         return {
@@ -491,7 +548,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
         };
       case 'dropdown':
         return {
-          label: 'Select an option',
+          label: '',
+          hasLabel: false,
           placeholder: 'Select an option',
           options: [
             { id: '1', title: 'Option 1' },
@@ -755,22 +813,37 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                         className={`border rounded-lg transition-all border-gray-200 ${
                           draggedStepId === step.id ? 'opacity-50' : ''
                         }`}
-                        draggable
-                        onDragStart={(e) => handleStepDragStart(e, step.id)}
+                        draggable={false}
+                        onDragStart={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
                         onDragOver={handleStepDragOver}
                         onDrop={(e) => handleStepDrop(e, step.id)}
-                        onDragEnd={handleStepDragEnd}
                       >
                         <div
                           className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50"
                           onClick={() => setExpandedStepId(expandedStepId === step.id ? null : step.id)}
                         >
                           <div className="flex items-center gap-3">
-                            <GripVertical 
-                              size={16} 
-                              className="text-gray-400 cursor-grab hover:text-gray-600" 
+                            <span
+                              draggable={true}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                handleStepDragStart(e, step.id);
+                              }}
+                              onDragEnd={(e) => {
+                                e.stopPropagation();
+                                handleStepDragEnd();
+                              }}
                               onMouseDown={(e) => e.stopPropagation()}
-                            />
+                              className="inline-flex cursor-grab active:cursor-grabbing"
+                            >
+                              <GripVertical 
+                                size={16} 
+                                className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                              />
+                            </span>
                             <span className="font-medium" style={{ color: '#464F5E' }}>
                               {step.name}
                             </span>
@@ -778,7 +851,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                               <span className="text-sm text-gray-500">- {step.question}</span>
                             )}
                           </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center gap-2">
                       <Tooltip content="Save as template">
                         <button
                           onClick={(e) => {
@@ -786,25 +859,31 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                             setStepToSaveAsTemplate(step.id);
                             setShowQuestionTemplateModal(true);
                           }}
-                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                          className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
                         >
                           <Bookmark size={18} />
                         </button>
                       </Tooltip>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteStep(step.id);
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                      {expandedStepId === step.id ? (
-                        <ChevronUp size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
-                      ) : (
-                        <ChevronDown size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
-                      )}
+                      <Tooltip content="Delete step">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteStep(step.id);
+                          }}
+                          className="flex items-center justify-center p-2 text-gray-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content={expandedStepId === step.id ? "Collapse" : "Expand"}>
+                        <div className="flex items-center justify-center">
+                          {expandedStepId === step.id ? (
+                            <ChevronUp size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                          ) : (
+                            <ChevronDown size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                          )}
+                        </div>
+                      </Tooltip>
                     </div>
                   </div>
 
@@ -984,31 +1063,67 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
 
                         {step.elements.length > 0 ? (
                           <div className="space-y-2">
-                            {step.elements.map((element) => (
-                              <div
-                                key={element.id}
-                                id={`element-${element.id}`}
-                                className="p-3 bg-gray-50 rounded-lg border transition-colors border-gray-200"
-                              >
-                                <div className="flex justify-between items-center">
-                                  <span 
-                                    className="font-medium text-base flex items-center" 
-                                    style={{ color: '#464F5E' }}
-                                  >
-                                    {getElementLabel(element.type)}
-                                  </span>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => deleteElement(step.id, element.id)}
-                                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
+                            {step.elements.map((element) => {
+                              const canDrag = step.elements.length > 1;
+                              const isDragging = draggedElementId === element.id;
+                              
+                              return (
+                                <div
+                                  key={element.id}
+                                  id={`element-${element.id}`}
+                                  className={`bg-gray-50 rounded-lg border transition-colors border-gray-200 ${
+                                    isDragging ? 'opacity-50' : ''
+                                  }`}
+                                  draggable={false}
+                                  onDragStart={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onDragOver={canDrag ? handleElementDragOver : undefined}
+                                  onDrop={(e) => canDrag && handleElementDrop(e, step.id, element.id)}
+                                >
+                                  <div className="flex justify-between items-center p-3">
+                                    <span 
+                                      className="text-sm font-medium flex items-center gap-2" 
+                                      style={{ color: '#464F5E' }}
+                                    >
+                                      {canDrag && (
+                                        <span
+                                          draggable={true}
+                                          onDragStart={(e) => {
+                                            e.stopPropagation();
+                                            handleElementDragStart(e, step.id, element.id);
+                                          }}
+                                          onDragEnd={(e) => {
+                                            e.stopPropagation();
+                                            handleElementDragEnd();
+                                          }}
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                          className="inline-flex cursor-grab active:cursor-grabbing"
+                                        >
+                                          <GripVertical 
+                                            size={16} 
+                                            className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                          />
+                                        </span>
+                                      )}
+                                      {getElementLabel(element.type)}
+                                    </span>
+                                    <div className="flex items-center justify-center gap-2">
+                                      <Tooltip content="Delete element">
+                                        <button
+                                          onClick={() => deleteElement(step.id, element.id)}
+                                          className="flex items-center justify-center p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </Tooltip>
                                     </div>
-                                </div>
+                                  </div>
 
+                                  <div className="pt-1 px-3 pb-3 space-y-3">
                                 {(element.type === 'text_field') && (
-                                  <div className="mt-3 space-y-4">
+                                  <div className="space-y-2">
                                     <ShowLabelToggle
                                       checked={!!element.config.hasLabel}
                                       onChange={(checked) =>
@@ -1044,20 +1159,44 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 )}
 
                                 {(element.type === 'dropdown') && (
-                                  <div className="mt-3">
-                                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                                      Placeholder
-                                    </label>
-                                    <EditorField
-                                      value={element.config.placeholder || ''}
-                                      onChange={(value) =>
+                                  <div className="space-y-2">
+                                    <ShowLabelToggle
+                                      checked={!!element.config.hasLabel}
+                                      onChange={(checked) =>
                                         updateElement(step.id, element.id, {
-                                          config: { ...element.config, placeholder: value },
+                                          config: { ...element.config, hasLabel: checked },
                                         })
                                       }
-                                      placeholder="ex. Select industry from dropdown..."
-                                      className="w-full"
+                                      primaryColor={primaryColor}
                                     />
+                                    <div className="flex flex-col space-y-2">
+                                      {element.config.hasLabel && (
+                                        <EditorField
+                                          value={element.config.label || ''}
+                                          onChange={(value) =>
+                                            updateElement(step.id, element.id, {
+                                              config: { ...element.config, label: value },
+                                            })
+                                          }
+                                          placeholder="Label"
+                                        />
+                                      )}
+                                      <div>
+                                        <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                          Placeholder
+                                        </label>
+                                        <EditorField
+                                          value={element.config.placeholder || ''}
+                                          onChange={(value) =>
+                                            updateElement(step.id, element.id, {
+                                              config: { ...element.config, placeholder: value },
+                                            })
+                                          }
+                                          placeholder="ex. Select industry from dropdown..."
+                                          className="w-full"
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
 
@@ -1075,7 +1214,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 )}
 
                                 {(element.type === 'calendar_field') && (
-                                  <div className="mt-3 space-y-4">
+                                  <div className="space-y-2">
                                     <ShowLabelToggle
                                       checked={!!element.config.hasLabel}
                                       onChange={(checked) =>
@@ -1140,8 +1279,10 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                      showSelectionConfig={element.type === 'simple_cards' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards'}
                                    />
                                  )}
-                              </div>
-                            ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
@@ -1223,7 +1364,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <Tooltip content="Save as template">
                                 <button
                                   onClick={(e) => {
@@ -1231,31 +1372,37 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                     setStepToSaveAsTemplate(step.id);
                                     setShowApplicationStepTemplateModal(true);
                                   }}
-                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                                  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
                                 >
                                   <Bookmark size={18} />
                                 </button>
                               </Tooltip>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteStep(step.id);
-                                }}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                              {expandedStepId === step.id ? (
-                                <ChevronUp size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
-                              ) : (
-                                <ChevronDown size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
-                              )}
+                              <Tooltip content="Delete step">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteStep(step.id);
+                                  }}
+                                  className="flex items-center justify-center p-2 text-gray-400 hover:text-red-600 transition-colors"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </Tooltip>
+                              <Tooltip content={expandedStepId === step.id ? "Collapse" : "Expand"}>
+                                <div className="flex items-center justify-center">
+                                  {expandedStepId === step.id ? (
+                                    <ChevronUp size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                                  ) : (
+                                    <ChevronDown size={20} className="text-gray-400 hover:text-gray-600 transition-colors" />
+                                  )}
+                                </div>
+                              </Tooltip>
                             </div>
                           </div>
 
                           {expandedStepId === step.id && (
                             <div 
-                              className="p-4 border-t space-y-4 bg-white"
+                              className="p-4 border-t space-y-4 bg-white rounded-b-lg"
                               style={{ borderColor: addOpacity(systemPrimaryColor, 0.2) }}
                             >
                               <SystemField
@@ -1288,7 +1435,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                       {step.isApplicationStep && (
                                         <div className="mb-6">
                                           <div className="flex justify-between items-center mb-4">
-                                            <h4 className="text-base font-semibold" style={{ color: '#464F5E' }}>
+                                            <h4 className="text-base font-medium" style={{ color: '#464F5E' }}>
                                               Application cards configuration
                                             </h4>
                                           </div>
@@ -1386,28 +1533,63 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                     )}
                                   </div>
                                   <div className="space-y-2">
-                                            {otherElements.map((element) => (
-                                      <div
-                                        key={element.id}
-                                        id={`element-${element.id}`}
-                                        className="p-3 bg-gray-50 rounded-lg border transition-colors border-gray-200"
-                                      >
-                                        <div className="flex justify-between items-center">
-                                          <span 
-                                            className="font-medium text-base flex items-center" 
-                                            style={{ color: '#464F5E' }}
-                                          >
-                                            {getElementLabel(element.type)}
-                                          </span>
-                                          <div className="flex items-center gap-2">
-                                            <button
-                                              onClick={() => deleteElement(step.id, element.id)}
-                                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                              <Trash2 size={16} />
-                                            </button>
-                                          </div>
-                                        </div>
+                                            {otherElements.map((element) => {
+                                              const canDrag = otherElements.length > 1;
+                                              const isDragging = draggedElementId === element.id;
+                                              
+                                              return (
+                                                <div
+                                                  key={element.id}
+                                                  id={`element-${element.id}`}
+                                                  className={`p-3 bg-gray-50 rounded-lg border transition-colors border-gray-200 ${
+                                                    isDragging ? 'opacity-50' : ''
+                                                  }`}
+                                                  draggable={false}
+                                                  onDragStart={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                  }}
+                                                  onDragOver={canDrag ? handleElementDragOver : undefined}
+                                                  onDrop={(e) => canDrag && handleElementDrop(e, step.id, element.id)}
+                                                >
+                                                  <div className="flex justify-between items-center">
+                                                    <span 
+                                                      className="text-sm font-medium flex items-center gap-2" 
+                                                      style={{ color: '#464F5E' }}
+                                                    >
+                                                      {canDrag && (
+                                                        <span
+                                                          draggable={true}
+                                                          onDragStart={(e) => {
+                                                            e.stopPropagation();
+                                                            handleElementDragStart(e, step.id, element.id);
+                                                          }}
+                                                          onDragEnd={(e) => {
+                                                            e.stopPropagation();
+                                                            handleElementDragEnd();
+                                                          }}
+                                                          onMouseDown={(e) => e.stopPropagation()}
+                                                          className="inline-flex cursor-grab active:cursor-grabbing"
+                                                        >
+                                                          <GripVertical 
+                                                            size={16} 
+                                                            className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                                          />
+                                                        </span>
+                                                      )}
+                                                      {getElementLabel(element.type)}
+                                                    </span>
+                                                    <div className="flex items-center justify-center gap-2">
+                                                      <Tooltip content="Delete element">
+                                                        <button
+                                                          onClick={() => deleteElement(step.id, element.id)}
+                                                          className="flex items-center justify-center p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                                        >
+                                                          <Trash2 size={16} />
+                                                        </button>
+                                                      </Tooltip>
+                                                    </div>
+                                                  </div>
 
                                                 {(element.type === 'simple_cards' || element.type === 'checkboxes' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards') && (
                                           <CardEditor
@@ -1422,7 +1604,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                           />
                                         )}
                                       </div>
-                                    ))}
+                                              );
+                                            })}
                                   </div>
                                         </>
                                 )}
