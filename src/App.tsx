@@ -95,7 +95,7 @@ export default function App() {
   console.log('App render - view:', view, 'selectedPrototypeId:', selectedPrototypeId);
 
   return (
-    <>
+    <div className="min-h-screen bg-white">
       {view === 'home' && (
         <HomePage
           prototypes={prototypes}
@@ -162,6 +162,6 @@ export default function App() {
           }}
         />
       )}
-    </>
+    </div>
   );
 }

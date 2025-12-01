@@ -123,7 +123,7 @@ export default function PrototypeCard({
       <div className="flex items-center justify-between mt-auto">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-regular bg-gray-100 text-gray-600">
-            {prototype.steps?.length || 0} steps
+            {prototype.steps?.length || 0} {prototype.steps?.length === 1 ? 'step' : 'steps'}
           </span>
         </div>
         <span className="text-xs font-regular text-gray-500">{new Date(prototype.updatedAt).toLocaleDateString()}</span>

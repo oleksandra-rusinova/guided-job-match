@@ -921,7 +921,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                       {!step.isApplicationStep && step.splitScreenWithImage && (
                         <div className="space-y-4 pl-6 border-l-2 border-gray-200">
                       <div>
-                            <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                               Image position
                             </label>
                             <TabControl
@@ -935,7 +935,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                               Image source
                             </label>
                             <div className="mb-3">
@@ -951,7 +951,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                               Image URL
                             </label>
                             {step.imageUploadMode !== 'upload' ? (
@@ -1008,7 +1008,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                       )}
 
                       <div className="pt-4">
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-3">
                           <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
                             Elements
                           </label>
@@ -1071,7 +1071,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 <div
                                   key={element.id}
                                   id={`element-${element.id}`}
-                                  className={`p-3 bg-gray-50 rounded-lg border transition-colors border-gray-200 ${
+                                  className={`bg-gray-50 rounded-lg border transition-colors border-gray-200 ${
                                     isDragging ? 'opacity-50' : ''
                                   }`}
                                   draggable={false}
@@ -1082,9 +1082,9 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                   onDragOver={canDrag ? handleElementDragOver : undefined}
                                   onDrop={(e) => canDrag && handleElementDrop(e, step.id, element.id)}
                                 >
-                                  <div className="flex justify-between items-center">
+                                  <div className="flex justify-between items-center p-3">
                                     <span 
-                                      className="text-xs font-medium flex items-center gap-2" 
+                                      className="text-sm font-medium flex items-center gap-2" 
                                       style={{ color: '#464F5E' }}
                                     >
                                       {canDrag && (
@@ -1121,8 +1121,9 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                     </div>
                                   </div>
 
+                                  <div className="pt-1 px-3 pb-3 space-y-3">
                                 {(element.type === 'text_field') && (
-                                  <div className="mt-2 space-y-4">
+                                  <div className="space-y-2">
                                     <ShowLabelToggle
                                       checked={!!element.config.hasLabel}
                                       onChange={(checked) =>
@@ -1158,7 +1159,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 )}
 
                                 {(element.type === 'dropdown') && (
-                                  <div className="mt-2 space-y-4">
+                                  <div className="space-y-2">
                                     <ShowLabelToggle
                                       checked={!!element.config.hasLabel}
                                       onChange={(checked) =>
@@ -1181,7 +1182,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                         />
                                       )}
                                       <div>
-                                        <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                                        <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                                           Placeholder
                                         </label>
                                         <EditorField
@@ -1213,7 +1214,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 )}
 
                                 {(element.type === 'calendar_field') && (
-                                  <div className="mt-2 space-y-4">
+                                  <div className="space-y-2">
                                     <ShowLabelToggle
                                       checked={!!element.config.hasLabel}
                                       onChange={(checked) =>
@@ -1278,7 +1279,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                      showSelectionConfig={element.type === 'simple_cards' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards'}
                                    />
                                  )}
-                              </div>
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
@@ -1478,7 +1480,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                       {/* Regular Elements Section */}
                                       {otherElements.length > 0 && (
                                       <>
-                                          <div className="flex justify-between items-center mb-4">
+                                          <div className="flex justify-between items-center mb-3">
                                             <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
                                               {step.isApplicationStep ? 'Elements' : 'Cards'}
                                             </label>
@@ -1552,7 +1554,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                                 >
                                                   <div className="flex justify-between items-center">
                                                     <span 
-                                                      className="text-xs font-medium flex items-center gap-2" 
+                                                      className="text-sm font-medium flex items-center gap-2" 
                                                       style={{ color: '#464F5E' }}
                                                     >
                                                       {canDrag && (

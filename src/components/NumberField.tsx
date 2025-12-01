@@ -24,10 +24,10 @@ export default function NumberField({
   disabled = false,
   placeholder,
   className = '',
-  size: _size = 'sm',
+  size = 'sm',
   showLabel = false,
   label = 'Number',
-  primaryColor: _primaryColor = '#2563EB',
+  primaryColor = '#2563EB',
 }: NumberFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -38,7 +38,7 @@ export default function NumberField({
     lg: 'w-12',
   };
 
-  const borderColor = isFocused ? '#2563EB' : '#E8EAEE';
+  const borderColor = isFocused ? primaryColor : '#E8EAEE';
   const borderWidth = isFocused ? 2 : 1;
   const boxShadow = isHovered && !disabled ? '0 4px 12px rgba(0, 0, 0, 0.1)' : 'none';
 
@@ -110,7 +110,7 @@ export default function NumberField({
       <div
         className="relative"
         style={{
-          width: sizeClasses["sm"],
+          width: sizeClasses[size],
           paddingTop: 4,
           paddingBottom: 4,
           paddingLeft: 16,

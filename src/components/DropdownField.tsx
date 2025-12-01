@@ -7,6 +7,8 @@ interface DropdownFieldProps {
   disabled?: boolean;
   options: Array<{ id: string; title?: string }>;
   onChange: (value: string) => void;
+  label?: string;
+  showLabel?: boolean;
 }
 
 export default function DropdownField({ 
@@ -15,16 +17,30 @@ export default function DropdownField({
   primaryColor, 
   disabled = false, 
   options = [],
-  onChange 
+  onChange,
+  label,
+  showLabel = false
 }: DropdownFieldProps) {
+  const labelColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500
+
   return (
-    <CustomDropdown
-      value={value}
-      placeholder={placeholder}
-      primaryColor={primaryColor}
-      disabled={disabled}
-      options={options}
-      onChange={onChange}
-    />
+    <div className="w-full flex flex-col justify-start items-start gap-2">
+      {showLabel && label && (
+        <div 
+          className="self-stretch justify-start text-base font-normal font-['Poppins'] leading-6 tracking-tight"
+          style={{ color: labelColor }}
+        >
+          {label}
+        </div>
+      )}
+      <CustomDropdown
+        value={value}
+        placeholder={placeholder}
+        primaryColor={primaryColor}
+        disabled={disabled}
+        options={options}
+        onChange={onChange}
+      />
+    </div>
   );
 }

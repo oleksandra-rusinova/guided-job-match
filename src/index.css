@@ -1,10 +1,27 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 
+/* Force white background globally - must be before Tailwind */
+html, body, #root {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    background-color: #ffffff !important; /* white */
+    background: #ffffff !important; /* white */
+  }
+  
+  #root {
+    background-color: #ffffff !important; /* white */
+    background: #ffffff !important; /* white */
+    min-height: 100vh;
+  }
+  
   body {
     font-family: 'Poppins', sans-serif;
   }
@@ -12,5 +29,13 @@
   /* Override browser default accent color for number inputs */
   input[type="number"] {
     accent-color: #6b7280 !important; /* gray-500 */
+  }
+}
+
+/* Force white background after Tailwind utilities */
+@layer utilities {
+  .bg-white {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
   }
 }

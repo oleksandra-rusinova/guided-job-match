@@ -13,7 +13,7 @@ interface CustomDropdownProps {
 export default function CustomDropdown({ 
   value, 
   placeholder = 'Select an option', 
-  primaryColor: _primaryColor, 
+  primaryColor: _primaryColor, // eslint-disable-line @typescript-eslint/no-unused-vars 
   disabled = false, 
   options = [],
   onChange 

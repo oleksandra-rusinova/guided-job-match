@@ -374,7 +374,7 @@ export default function CardEditor({
           {/* Image upload for image_cards */}
           {element.type === 'image_cards' && (
             <div>
-              <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+              <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                 Card Image
               </label>
               <div className="mb-3">
@@ -419,7 +419,7 @@ export default function CardEditor({
                 e.stopPropagation();
               }}
             >
-              <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+              <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                 Card Image
               </label>
               <div className="mb-3">
@@ -461,7 +461,7 @@ export default function CardEditor({
           {element.type === 'advanced_cards' && (
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Heading
                 </label>
                 <EditorField
@@ -473,7 +473,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Main text
                 </label>
                 <EditorField
@@ -485,7 +485,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Link supporting text
                 </label>
                 <EditorField
@@ -509,7 +509,7 @@ export default function CardEditor({
               {opt.linkEnabled && (
                 <div className="space-y-2 pl-6 border-l-2 border-gray-200">
                   <div>
-                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Link URL
                     </label>
                     <SystemField
@@ -522,7 +522,7 @@ export default function CardEditor({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Link text
                     </label>
                     <EditorField
@@ -548,7 +548,7 @@ export default function CardEditor({
               }}
             >
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Title
                 </label>
                 <EditorField
@@ -560,7 +560,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Location
                 </label>
                 <EditorField
@@ -572,7 +572,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Department
                 </label>
                 <EditorField
@@ -584,7 +584,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Type
                 </label>
                 <SystemField
@@ -602,7 +602,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job ID
                 </label>
                 <EditorField
@@ -614,7 +614,7 @@ export default function CardEditor({
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                   Job Description
                 </label>
                 <SystemField
@@ -634,7 +634,7 @@ export default function CardEditor({
                 </label>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Primary Button Link (Apply)
                     </label>
                     <SystemField
@@ -646,7 +646,7 @@ export default function CardEditor({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-4" style={{ color: '#464F5E' }}>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
                       Learn More Button Link (View details)
                     </label>
                     <SystemField

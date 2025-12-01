@@ -26,6 +26,7 @@ export default function SystemField({
   showLabel = true,
   options = []
 }: SystemFieldProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_isFocused, setIsFocused] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

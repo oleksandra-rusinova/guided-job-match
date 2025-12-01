@@ -22,7 +22,7 @@ export default function SelectionConfiguration({
 }: SelectionConfigurationProps) {
   return (
     <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200">
-      <h4 className="text-sm font-medium text-gray-900 mb-4">Selection Configuration</h4>
+      <span className="text-sm font-medium block mb-4" style={{ color: '#464F5E' }}>Selection Configuration</span>
       <div className="space-y-4">
         <div className="flex items-center gap-4">
           <RadioButton
