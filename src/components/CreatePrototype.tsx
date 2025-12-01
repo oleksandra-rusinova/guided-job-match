@@ -178,12 +178,12 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     }
   };
 
-  const handleLogoUpload = (file: File | null, fileInfo: { name: string; size: number; dataUrl: string }) => {
+  const handleLogoUpload = (file: File | null, fileInfo: { name: string; size: number; dataUrl: string } | null) => {
     setLogoFile(file);
     setLogoUrl(fileInfo?.dataUrl || '');
   };
 
-  const handleStepImageUpload = (stepId: string, _file: File | null, fileInfo: { name: string; size: number; dataUrl: string }) => {
+  const handleStepImageUpload = (stepId: string, _file: File | null, fileInfo: { name: string; size: number; dataUrl: string } | null) => {
     updateStep(stepId, { imageUrl: fileInfo?.dataUrl || '' });
   };
 
