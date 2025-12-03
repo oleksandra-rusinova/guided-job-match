@@ -157,6 +157,8 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
       const prototypes = getPrototypesLocal();
       return prototypes.find(p => p.id === id);
     }
+    
+    // Use the anon key client which should work for public reads if RLS allows
     const { data, error } = await supabase
       .from('prototypes')
       .select('*')
@@ -165,8 +167,16 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
 
     if (error) {
       console.error('Error fetching prototype:', error);
-      const prototypes = getPrototypesLocal();
-      return prototypes.find(p => p.id === id);
+      // For public access, if RLS blocks the query, we'll get an error
+      // Don't fallback to localStorage for public users as it won't have the data
+      // Return undefined to indicate the prototype wasn't found or access denied
+      if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+        // No rows found - prototype doesn't exist
+        return undefined;
+      }
+      // For other errors (like RLS blocking), still return undefined
+      // The caller should handle this appropriately
+      return undefined;
     }
 
     if (!data) return undefined;
@@ -184,8 +194,8 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
     };
   } catch (error) {
     console.error('Error fetching prototype:', error);
-    const prototypes = getPrototypesLocal();
-    return prototypes.find(p => p.id === id);
+    // Don't fallback to localStorage for public users
+    return undefined;
   }
 };
 

@@ -40,16 +40,24 @@ export default function AdvancedCard({
     return 'Default';
   };
 
-  // Determine border color based on state
+  // Determine border color and width based on state
   let borderColor: string;
+  let outlineWidth: number;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
+  } else if (selected && isHovered) {
+    borderColor = primaryColor || '#4F46E5';
+    outlineWidth = 3; // 3px stroke on hover+selected
   } else if (selected) {
     borderColor = primaryColor || '#4F46E5'; // indigo-600
+    outlineWidth = 2; // 2px stroke when selected
   } else if (isHovered) {
     borderColor = '#AEB5C2'; // gray-400
+    outlineWidth = 1; // 1px stroke on hover
   } else {
     borderColor = '#E8EAEE'; // gray-200
+    outlineWidth = 1;
   }
 
   // Text color based on state (computed but not used - keeping for potential future use)
@@ -70,11 +78,12 @@ export default function AdvancedCard({
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative w-full text-left rounded-2xl bg-[var(--bg-default,white)] shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] flex flex-col transition-all ${
+      className={`relative w-full text-left rounded-2xl bg-[var(--bg-default,white)] shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-offset-[-1px] flex flex-col transition-all ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{
         outlineColor: borderColor,
+        outlineWidth: `${outlineWidth}px`,
       }}
     >
       {/* Selection Indicator */}

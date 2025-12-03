@@ -272,6 +272,22 @@ export default function CardEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element.id]);
 
+  // Auto-initialize maxSelection for dropdowns with multi-choice enabled
+  useEffect(() => {
+    if (element.type === 'dropdown' && element.config.selectionType === 'multiple' && showSelectionConfig) {
+      const maxOptions = element.config.options?.length || 10;
+      const currentMaxSelection = element.config.maxSelection;
+      
+      // If maxSelection is undefined, null, or less than 2, default to unlimited (maxOptions)
+      if (currentMaxSelection === undefined || currentMaxSelection === null || currentMaxSelection < 2) {
+        onUpdateElement(stepIndex, element.id, {
+          config: { ...element.config, maxSelection: maxOptions }
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element.type, element.id, element.config.selectionType, showSelectionConfig]);
+
   return (
     <div className="mt-2 space-y-2">
       {/* Empty state for application_card when no cards exist */}
@@ -679,21 +695,50 @@ export default function CardEditor({
       )}
 
       {/* Selection Configuration */}
-      {showSelectionConfig && (
-        <SelectionConfiguration
-          elementId={element.id}
-          selectionType={element.config.selectionType}
-          maxSelection={element.config.maxSelection}
-          maxOptions={element.config.options?.length || 10}
-          primaryColor={primaryColor}
-          onSelectionTypeChange={(selectionType) => onUpdateElement(stepIndex, element.id, {
-            config: { ...element.config, selectionType }
-          })}
-          onMaxSelectionChange={(maxSelection) => onUpdateElement(stepIndex, element.id, {
-            config: { ...element.config, maxSelection }
-          })}
-        />
-      )}
+      {showSelectionConfig && (() => {
+        // For dropdowns with multi-choice enabled, ensure maxSelection defaults to maxOptions (unlimited) if not set or invalid
+        const maxOptions = element.config.options?.length || 10;
+        let maxSelection = element.config.maxSelection;
+        
+        if (element.type === 'dropdown' && element.config.selectionType === 'multiple') {
+          // If maxSelection is undefined, null, or less than 2, default to unlimited (maxOptions)
+          if (maxSelection === undefined || maxSelection === null || maxSelection < 2) {
+            maxSelection = maxOptions;
+          }
+        }
+        
+        return (
+          <SelectionConfiguration
+            elementId={element.id}
+            selectionType={element.config.selectionType}
+            maxSelection={maxSelection}
+            maxOptions={maxOptions}
+            primaryColor={primaryColor}
+            itemLabel={element.type === 'dropdown' ? 'option' : 'card'}
+            isDropdown={element.type === 'dropdown'}
+            onSelectionTypeChange={(selectionType) => {
+              const updates: Partial<Element> = {
+                config: { ...element.config, selectionType }
+              };
+              
+              // When enabling multi-choice for dropdowns, default to unlimited (No limit)
+              if (element.type === 'dropdown' && selectionType === 'multiple') {
+                const currentMaxOptions = element.config.options?.length || 10;
+                const currentMaxSelection = element.config.maxSelection;
+                // If maxSelection is undefined, null, or less than 2, set to unlimited
+                if (currentMaxSelection === undefined || currentMaxSelection === null || currentMaxSelection < 2) {
+                  updates.config = { ...updates.config, maxSelection: currentMaxOptions };
+                }
+              }
+              
+              onUpdateElement(stepIndex, element.id, updates);
+            }}
+            onMaxSelectionChange={(maxSelection) => onUpdateElement(stepIndex, element.id, {
+              config: { ...element.config, maxSelection }
+            })}
+          />
+        );
+      })()}
     </div>
   );
 }

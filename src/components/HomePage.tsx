@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Plus, Search, Bookmark, ChevronDown } from 'lucide-react';
+import { Plus, Search, Bookmark, ChevronDown, HelpCircle } from 'lucide-react';
 import { Prototype } from '../types';
 import PrototypeCard from './PrototypeCard';
 import PrimaryButton from './PrimaryButton';
 import SecondaryButton from './SecondaryButton';
 import SystemField from './SystemField';
+import HowItWorksModal from './HowItWorksModal';
 
 interface HomePageProps {
   prototypes: Prototype[];
@@ -21,10 +22,16 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
   const handleCopyUrl = (id: string) => {
     const url = `${window.location.origin}/prototype/${id}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url).then(() => {
+      // Optional: Show a toast notification or feedback
+      // For now, we'll just copy silently
+    }).catch(err => {
+      console.error('Failed to copy URL:', err);
+    });
   };
 
   const filteredPrototypes = prototypes
@@ -60,6 +67,9 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <SecondaryButton onClick={() => setShowHowItWorksModal(true)} icon={<HelpCircle size={18} />}>
+                How it works
+              </SecondaryButton>
               <SecondaryButton onClick={onOpenTemplates} icon={<Bookmark size={18} />}>
                 Prototype templates
               </SecondaryButton>
@@ -156,6 +166,10 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
           </>
         )}
       </div>
+      <HowItWorksModal 
+        isOpen={showHowItWorksModal} 
+        onClose={() => setShowHowItWorksModal(false)} 
+      />
     </div>
   );
 }

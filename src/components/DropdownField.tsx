@@ -1,14 +1,16 @@
 import CustomDropdown from './CustomDropdown';
 
 interface DropdownFieldProps {
-  value: string;
+  value: string | string[];
   placeholder?: string;
   primaryColor: string;
   disabled?: boolean;
   options: Array<{ id: string; title?: string }>;
-  onChange: (value: string) => void;
+  onChange: (value: string | string[]) => void;
   label?: string;
   showLabel?: boolean;
+  multiSelect?: boolean;
+  maxSelection?: number;
 }
 
 export default function DropdownField({ 
@@ -19,7 +21,9 @@ export default function DropdownField({
   options = [],
   onChange,
   label,
-  showLabel = false
+  showLabel = false,
+  multiSelect = false,
+  maxSelection
 }: DropdownFieldProps) {
   const labelColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500
 
@@ -40,6 +44,8 @@ export default function DropdownField({
         disabled={disabled}
         options={options}
         onChange={onChange}
+        multiSelect={multiSelect}
+        maxSelection={maxSelection}
       />
     </div>
   );

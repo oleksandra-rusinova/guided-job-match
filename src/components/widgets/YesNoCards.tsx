@@ -33,16 +33,24 @@ export function YesNoCard({ text, selected, onSelect, primaryColor, disabled = f
     return 'Default';
   };
 
-  // Determine border color based on state (matching TextField logic)
+  // Determine border color and width based on state
   let borderColor: string;
+  let outlineWidth: number;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
+  } else if (selected && isHovered) {
+    borderColor = primaryColor;
+    outlineWidth = 3; // 3px stroke on hover+selected
   } else if (selected) {
     borderColor = primaryColor;
+    outlineWidth = 2; // 2px stroke when selected
   } else if (isHovered) {
     borderColor = '#9CA3AF'; // gray-400
+    outlineWidth = 1; // 1px stroke on hover
   } else {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
   }
 
   return (
@@ -52,11 +60,12 @@ export function YesNoCard({ text, selected, onSelect, primaryColor, disabled = f
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`${className || 'w-[328px]'} min-h-40 pl-6 pr-4 py-4 bg-white rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] ${getOutlineClasses()} ${className ? 'w-full flex' : 'inline-flex'} justify-start items-center gap-2.5 transition-all relative ${
+      className={`${className || 'w-[328px]'} min-h-40 pl-6 pr-4 py-4 bg-white rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-offset-[-1px] ${getOutlineClasses()} ${className ? 'w-full flex' : 'inline-flex'} justify-start items-center gap-2.5 transition-all relative ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{
         outlineColor: borderColor,
+        outlineWidth: `${outlineWidth}px`,
       }}
     >
       <div className="flex-1 flex justify-center items-center">

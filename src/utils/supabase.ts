@@ -6,6 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Create Supabase client only if environment variables are available
 // This allows the app to fallback to localStorage if Supabase is not configured
+// The anon key allows public access if RLS policies permit SELECT operations
 let supabase: SupabaseClient | null = null;
 
 if (supabaseUrl && supabaseAnonKey) {

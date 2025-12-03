@@ -555,6 +555,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
             { id: '1', title: 'Option 1' },
             { id: '2', title: 'Option 2' },
           ],
+          selectionType: 'single' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'calendar_field':
         return {
@@ -601,7 +603,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   };
 
   const updateElement = (stepId: string, elementId: string, updates: Partial<Element>) => {
-    setSteps(steps.map(step =>
+    setSteps(prevSteps => prevSteps.map(step =>
       step.id === stepId
         ? {
             ...step,
@@ -1209,7 +1211,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                       updateElement(targetStep.id, elementId, updates);
                                     }}
                                     primaryColor={primaryColor}
-                                    showSelectionConfig={false}
+                                    showSelectionConfig={true}
                                   />
                                 )}
 
