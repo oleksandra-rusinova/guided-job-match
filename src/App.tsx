@@ -107,31 +107,30 @@ function AppContent() {
     // Check authentication status - logged-in users get full functionality, public users get restricted view
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
     
-    // If we're not on a prototype route anymore, don't render
-    if (!id || !location.pathname.startsWith('/prototype/')) {
-      return null;
-    }
+    // Explicitly check if we're on the prototype route
+    // React Router should handle this, but we add an extra check to ensure proper unmounting
+    const isOnPrototypeRoute = location.pathname.startsWith('/prototype/') && !!id;
     
     // Create a stable callback for onExit that properly handles navigation
     const handleExit = useCallback(() => {
-      console.log('PrototypeView onExit called');
+      console.log('PrototypeView onExit called, navigating to home');
       // Only navigate to home if authenticated, otherwise stay on page
       if (isAuthenticated) {
-        // Use navigate with replace to ensure React Router updates
-        navigate('/', { replace: true });
-        // Fallback: if React Router doesn't update the view, force navigation
-        // This ensures the user always gets navigated back to home
-        setTimeout(() => {
-          if (window.location.pathname !== '/') {
-            window.location.href = '/';
-          }
-        }, 50);
+        // Use window.location.href to force a full navigation
+        // This ensures React Router properly switches routes and unmounts the component
+        window.location.href = '/';
       } else {
         // For public users, exit doesn't navigate anywhere
         // They can close the tab or use browser back button
         console.log('Public user - exit action ignored');
       }
-    }, [isAuthenticated, navigate]);
+    }, [isAuthenticated]);
+    
+    // If we're not on a prototype route anymore, don't render
+    // This ensures the component doesn't render when navigating away
+    if (!isOnPrototypeRoute) {
+      return null;
+    }
     
     return (
       <PrototypeView

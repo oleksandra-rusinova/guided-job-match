@@ -59,11 +59,16 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
       try {
         console.log('Loading prototype with ID:', prototypeId);
         const data = await getPrototype(prototypeId);
-        console.log('Prototype loaded:', data ? 'Found' : 'Not found');
+        console.log('Prototype loaded:', data ? 'Found' : 'Not found', {
+          prototypeId,
+          hasData: !!data,
+          dataId: data?.id
+        });
         if (data) {
           setPrototype(data);
         } else {
           // Prototype not found - set to null to show error
+          console.warn('Prototype not found or access denied:', prototypeId);
           setPrototype(null);
         }
       } catch (error) {

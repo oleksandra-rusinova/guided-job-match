@@ -11,6 +11,7 @@ interface SelectionConfigurationProps {
   onMaxSelectionChange: (maxSelection: number) => void;
   itemLabel?: string; // e.g., "card", "option", "item"
   isDropdown?: boolean; // If true, use dropdown-specific labels
+  onCombinedChange?: (updates: { selectionType?: 'single' | 'multiple'; maxSelection?: number }) => void; // Optional combined callback
 }
 
 export default function SelectionConfiguration({
@@ -23,6 +24,7 @@ export default function SelectionConfiguration({
   onMaxSelectionChange,
   itemLabel = 'card',
   isDropdown = false,
+  onCombinedChange,
 }: SelectionConfigurationProps) {
   const singleLabel = isDropdown ? 'No limit' : `Only one ${itemLabel}`;
   const multipleLabel = isDropdown ? 'Number of choices' : `More than 1 ${itemLabel}`;
@@ -48,23 +50,36 @@ export default function SelectionConfiguration({
       // "Number of choices" sets maxSelection to 2 (or keeps current if valid)
       if (newSelectionType === 'single') {
         // "No limit" selected - set to unlimited
-        // Call onMaxSelectionChange first to update maxSelection to maxOptions
-        // This ensures isNoLimit becomes true and NumberField disappears
-        onMaxSelectionChange(currentMaxOptions);
-        // Then update selectionType to 'multiple' to enable multi-choice
-        onSelectionTypeChange('multiple');
+        if (onCombinedChange) {
+          // Use combined callback to update both values atomically
+          onCombinedChange({ selectionType: 'multiple', maxSelection: currentMaxOptions });
+        } else {
+          // Fallback to separate callbacks
+          onMaxSelectionChange(currentMaxOptions);
+          onSelectionTypeChange('multiple');
+        }
       } else {
         // "Number of choices" selected - set to 2 or keep current valid value
         // If currently single selection, default to 2
         const newMax = selectionType === 'single' 
           ? 2 
           : (currentMaxSelection >= currentMaxOptions ? 2 : Math.max(2, currentMaxSelection));
-        onMaxSelectionChange(newMax);
-        onSelectionTypeChange('multiple');
+        if (onCombinedChange) {
+          // Use combined callback to update both values atomically
+          onCombinedChange({ selectionType: 'multiple', maxSelection: newMax });
+        } else {
+          // Fallback to separate callbacks
+          onMaxSelectionChange(newMax);
+          onSelectionTypeChange('multiple');
+        }
       }
     } else {
       // For non-dropdowns, use normal behavior
-      onSelectionTypeChange(newSelectionType);
+      if (onCombinedChange) {
+        onCombinedChange({ selectionType: newSelectionType });
+      } else {
+        onSelectionTypeChange(newSelectionType);
+      }
     }
   };
 
@@ -94,7 +109,13 @@ export default function SelectionConfiguration({
             <label className="text-sm text-gray-800">Maximum {itemLabel}s:</label>
             <NumberField
               value={maxSelection}
-              onChange={onMaxSelectionChange}
+              onChange={(newMaxSelection) => {
+                if (onCombinedChange) {
+                  onCombinedChange({ maxSelection: newMaxSelection });
+                } else {
+                  onMaxSelectionChange(newMaxSelection);
+                }
+              }}
               min={2}
               max={maxOptions}
               size="sm"

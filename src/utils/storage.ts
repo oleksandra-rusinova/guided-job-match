@@ -159,6 +159,7 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
     }
     
     // Use the anon key client which should work for public reads if RLS allows
+    console.log('Fetching prototype from Supabase with ID:', id);
     const { data, error } = await supabase
       .from('prototypes')
       .select('*')
@@ -166,21 +167,40 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
       .single();
 
     if (error) {
-      console.error('Error fetching prototype:', error);
+      console.error('Error fetching prototype:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        id: id
+      });
+      
       // For public access, if RLS blocks the query, we'll get an error
       // Don't fallback to localStorage for public users as it won't have the data
       // Return undefined to indicate the prototype wasn't found or access denied
       if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
         // No rows found - prototype doesn't exist
+        console.log('Prototype not found in database (no rows)');
         return undefined;
       }
-      // For other errors (like RLS blocking), still return undefined
+      
+      // Check for RLS/permission errors
+      if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+        console.error('RLS policy blocking access to prototype. Check your Supabase RLS policies to allow public SELECT.');
+        return undefined;
+      }
+      
+      // For other errors, still return undefined
       // The caller should handle this appropriately
       return undefined;
     }
 
-    if (!data) return undefined;
+    if (!data) {
+      console.log('No data returned from Supabase query');
+      return undefined;
+    }
 
+    console.log('Prototype loaded successfully:', data.id);
     return {
       id: data.id,
       name: data.name,
@@ -193,7 +213,7 @@ export const getPrototype = async (id: string): Promise<Prototype | undefined> =
       updatedAt: data.updated_at,
     };
   } catch (error) {
-    console.error('Error fetching prototype:', error);
+    console.error('Exception while fetching prototype:', error);
     // Don't fallback to localStorage for public users
     return undefined;
   }

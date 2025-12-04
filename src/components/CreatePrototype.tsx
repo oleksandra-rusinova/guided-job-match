@@ -607,9 +607,16 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       step.id === stepId
         ? {
             ...step,
-            elements: step.elements.map(el =>
-              el.id === elementId ? { ...el, ...updates } : el
-            ),
+            elements: step.elements.map(el => {
+              if (el.id === elementId) {
+                // Properly merge config updates to avoid overwriting other config properties
+                if (updates.config && el.config) {
+                  return { ...el, ...updates, config: { ...el.config, ...updates.config } };
+                }
+                return { ...el, ...updates };
+              }
+              return el;
+            }),
           }
         : step
     ));

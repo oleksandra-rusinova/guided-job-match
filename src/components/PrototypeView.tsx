@@ -222,7 +222,16 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
         idx === stepIndex
           ? {
               ...s,
-              elements: s.elements.map(el => (el.id === elementId ? { ...el, ...updates } : el)),
+              elements: s.elements.map(el => {
+                if (el.id === elementId) {
+                  // Properly merge config updates to avoid overwriting other config properties
+                  if (updates.config && el.config) {
+                    return { ...el, ...updates, config: { ...el.config, ...updates.config } };
+                  }
+                  return { ...el, ...updates };
+                }
+                return el;
+              }),
             }
           : s
       )
@@ -1305,7 +1314,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           onExit={onExit}
           showActions={showActions}
         />
-        {isConnected && presenceUsers && presenceUsers.length > 0 && (
+        {showActions && isConnected && presenceUsers && presenceUsers.length > 0 && (
           <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
             <PresenceIndicator users={presenceUsers} currentUserId={userId} />
           </div>
@@ -1323,6 +1332,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-white">
         <Footer
           onExit={onExit}
+          showExit={showActions}
           onNext={() => setCurrentPage(p => p + 1)}
           onBack={() => setCurrentPage(p => p - 1)}
           canGoBack={canGoBack}
@@ -1870,14 +1880,34 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       </div>
                     </div>
                   ) : null}
+                    </div>
+                    )}
 
-                  {(el.type === 'dropdown' || el.type === 'checkboxes' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
+                  {el.type === 'dropdown' && (
+                    <div className="pt-1 px-3 pb-1 space-y-3">
+                      <CardEditor
+                        element={el}
+                        stepIndex={currentPage}
+                        onUpdateElement={(stepIndex, elementId, updates) => {
+                          updateElement(stepIndex, elementId, updates);
+                        }}
+                        primaryColor={prototype.primaryColor}
+                        showSelectionConfig={true}
+                      />
+                    </div>
+                  )}
+
+                  {(!isCardType || isExpanded) && (
+                    <div className="pt-1 px-3 pb-3 space-y-3">
+                  {(el.type === 'checkboxes' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
                     <CardEditor
                       element={el}
                       stepIndex={currentPage}
-                      onUpdateElement={updateElement}
+                      onUpdateElement={(stepIndex, elementId, updates) => {
+                        updateElement(stepIndex, elementId, updates);
+                      }}
                       primaryColor={prototype.primaryColor}
-                      showSelectionConfig={el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards' || el.type === 'dropdown'}
+                      showSelectionConfig={el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards'}
                       disableAddCard={false}
                     />
                   )}
