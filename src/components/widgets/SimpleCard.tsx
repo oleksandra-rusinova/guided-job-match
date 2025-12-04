@@ -32,16 +32,24 @@ export default function SimpleCard({ title, selected, onSelect, primaryColor, di
     return 'Default';
   };
 
-  // Determine border color based on state (matching TextField logic)
+  // Determine border color and width based on state
   let borderColor: string;
+  let outlineWidth: number;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
+  } else if (selected && isHovered) {
+    borderColor = primaryColor;
+    outlineWidth = 3; // 3px stroke on hover+selected
   } else if (selected) {
     borderColor = primaryColor;
+    outlineWidth = 2; // 2px stroke when selected
   } else if (isHovered) {
     borderColor = '#9CA3AF'; // gray-400
+    outlineWidth = 1; // 1px stroke on hover
   } else {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
   }
 
   return (
@@ -51,11 +59,12 @@ export default function SimpleCard({ title, selected, onSelect, primaryColor, di
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`w-full min-h-32 p-4 relative bg-[var(--bg-default,white)] rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] ${getOutlineClasses()} flex justify-start items-end gap-2.5 transition-all ${
+      className={`w-full min-h-32 p-4 relative bg-[var(--bg-default,white)] rounded-2xl shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-offset-[-1px] ${getOutlineClasses()} flex justify-start items-end gap-2.5 transition-all ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{
         outlineColor: borderColor,
+        outlineWidth: `${outlineWidth}px`,
       }}
     >
       <div className="flex-1 max-h-14 flex justify-start items-end gap-2.5">

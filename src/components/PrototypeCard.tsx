@@ -80,7 +80,7 @@ export default function PrototypeCard({
                 style={{ color: '#464F5E' }}
               >
                 <Link size={16} />
-                Copy URL
+                Copy public URL
               </button>
               <div className="border-t border-gray-200 my-1" />
               <button

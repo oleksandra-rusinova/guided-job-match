@@ -29,15 +29,17 @@ import PresenceIndicator from './PresenceIndicator';
 import Checkbox from './Checkbox';
 import TabControl from './TabControl';
 import FileUploader from './FileUploader';
+import ComingSoonModal from './ComingSoonModal';
 
 interface PrototypeViewProps {
   prototypeId: string;
   prototype?: Prototype; // Optional prototype from state to avoid reloading
   onExit: () => void;
   onEdit: () => void;
+  showActions?: boolean; // Optional prop to show/hide action buttons (for public users)
 }
 
-export default function PrototypeView({ prototypeId, prototype: initialPrototype, onExit }: PrototypeViewProps) {
+export default function PrototypeView({ prototypeId, prototype: initialPrototype, onExit, onEdit, showActions = true }: PrototypeViewProps) {
   // Generate a user ID for this session (in a real app, this would come from auth)
   const userId = `user-${localStorage.getItem('userId') || crypto.randomUUID()}`;
   const userName = localStorage.getItem('userName') || `User ${userId.slice(-4)}`;
@@ -60,6 +62,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
   const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
   const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
+  const [showRefineSelectionModal, setShowRefineSelectionModal] = useState(false);
   const totalPages = stepsState.length;
 
   const canGoBack = currentPage > 0;
@@ -219,7 +222,16 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
         idx === stepIndex
           ? {
               ...s,
-              elements: s.elements.map(el => (el.id === elementId ? { ...el, ...updates } : el)),
+              elements: s.elements.map(el => {
+                if (el.id === elementId) {
+                  // Properly merge config updates to avoid overwriting other config properties
+                  if (updates.config && el.config) {
+                    return { ...el, ...updates, config: { ...el.config, ...updates.config } };
+                  }
+                  return { ...el, ...updates };
+                }
+                return el;
+              }),
             }
           : s
       )
@@ -410,6 +422,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             { id: '1', title: 'Option 1' },
             { id: '2', title: 'Option 2' },
           ],
+          selectionType: 'single' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'calendar_field':
         return {
@@ -599,17 +613,29 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : { width: '680px', margin: '0 auto', padding: '0' };
               
+              const selectionType = el.config.selectionType || 'single';
+              const maxSelection = el.config.maxSelection || 1;
+              const multiSelect = selectionType === 'multiple';
+              
+              // Normalize value based on selection type
+              const currentValue = fieldValues[el.id];
+              const normalizedValue = multiSelect
+                ? (Array.isArray(currentValue) ? currentValue : (typeof currentValue === 'string' && currentValue ? [currentValue] : []))
+                : (typeof currentValue === 'string' ? currentValue : (Array.isArray(currentValue) && currentValue.length > 0 ? currentValue[0] : ''));
+              
               return (
                 <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     <DropdownField
-                      value={typeof fieldValues[el.id] === 'string' ? fieldValues[el.id] as string : ''}
+                      value={normalizedValue}
                       onChange={(val) => setFieldValues(v => ({ ...v, [el.id]: val }))}
                       placeholder={el.config.placeholder || 'Select an option'}
                       primaryColor={prototype.primaryColor}
                       options={el.config.options || []}
                       label={el.config.label || 'Label'}
                       showLabel={!!el.config.hasLabel}
+                      multiSelect={multiSelect}
+                      maxSelection={maxSelection}
                     />
                   </div>
                 </div>
@@ -1203,22 +1229,6 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               );
             }
             
-            // Basic rendering for options-based elements (cards/dropdowns/checkboxes)
-            if (el.type === 'dropdown') {
-              return (
-                <div key={el.id} className="flex w-full flex-col items-start gap-3">
-                  {el.config.hasLabel && el.config.label && (
-                    <label className="block text-sm font-medium text-gray-700">{el.config.label}</label>
-                  )}
-                  <select className="w-full px-5 py-3.5 border border-gray-200 rounded-[16px] focus:ring-4 focus:border-gray-300"
-                          style={{ boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.04)' }}>
-                    {(el.config.options || []).map(opt => (
-                      <option key={opt.id} value={opt.id}>{opt.title}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            }
             return null;
           })}
         </div>
@@ -1294,10 +1304,17 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       <div className="fixed top-0 left-0 right-0 z-30 bg-white">
         <PrototypeHeader 
           prototype={prototype}
-          onEdit={() => setIsEditorOpen(true)}
+          onEdit={() => {
+            if (showActions) {
+              setIsEditorOpen(true);
+            } else {
+              onEdit(); // Call the onEdit callback which will handle authentication
+            }
+          }}
           onExit={onExit}
+          showActions={showActions}
         />
-        {isConnected && presenceUsers && presenceUsers.length > 0 && (
+        {showActions && isConnected && presenceUsers && presenceUsers.length > 0 && (
           <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
             <PresenceIndicator users={presenceUsers} currentUserId={userId} />
           </div>
@@ -1315,6 +1332,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-white">
         <Footer
           onExit={onExit}
+          showExit={showActions}
           onNext={() => setCurrentPage(p => p + 1)}
           onBack={() => setCurrentPage(p => p - 1)}
           canGoBack={canGoBack}
@@ -1323,11 +1341,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           isNextDisabled={isNextDisabled}
           isApplicationStep={currentStep?.isApplicationStep || false}
           onRefineSelection={() => {
-            // Handle refine selection - could reset selections or go back to previous step
-            // For now, we'll just go back one step
-            if (canGoBack) {
-              setCurrentPage(p => p - 1);
-            }
+            setShowRefineSelectionModal(true);
           }}
         />
       </div>
@@ -1866,12 +1880,32 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       </div>
                     </div>
                   ) : null}
+                    </div>
+                    )}
 
-                  {(el.type === 'dropdown' || el.type === 'checkboxes' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
+                  {el.type === 'dropdown' && (
+                    <div className="pt-1 px-3 pb-1 space-y-3">
+                      <CardEditor
+                        element={el}
+                        stepIndex={currentPage}
+                        onUpdateElement={(stepIndex, elementId, updates) => {
+                          updateElement(stepIndex, elementId, updates);
+                        }}
+                        primaryColor={prototype.primaryColor}
+                        showSelectionConfig={true}
+                      />
+                    </div>
+                  )}
+
+                  {(!isCardType || isExpanded) && (
+                    <div className="pt-1 px-3 pb-3 space-y-3">
+                  {(el.type === 'checkboxes' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
                     <CardEditor
                       element={el}
                       stepIndex={currentPage}
-                      onUpdateElement={updateElement}
+                      onUpdateElement={(stepIndex, elementId, updates) => {
+                        updateElement(stepIndex, elementId, updates);
+                      }}
                       primaryColor={prototype.primaryColor}
                       showSelectionConfig={el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards'}
                       disableAddCard={false}
@@ -1902,6 +1936,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
           </div>
         </div>
       )}
+
+      {/* Refine Selection Coming Soon Modal */}
+      <ComingSoonModal
+        isOpen={showRefineSelectionModal}
+        onClose={() => setShowRefineSelectionModal(false)}
+        title="Coming Soon"
+        message="This feature is to be developed in future."
+      />
     </div>
   );
 }

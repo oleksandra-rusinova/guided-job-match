@@ -32,6 +32,13 @@ export default function CardEditor({
   const [newlyAddedCardOptionId, setNewlyAddedCardOptionId] = useState<string | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const autoExpandedElementIdsRef = useRef<Set<string>>(new Set());
+  // Track latest element config to avoid stale closures in SelectionConfiguration callbacks
+  const elementConfigRef = useRef(element.config);
+  
+  // Update ref whenever element changes
+  useEffect(() => {
+    elementConfigRef.current = element.config;
+  }, [element.config]);
 
   const addCardOption = () => {
     const currentOptions = element.config.options || [];
@@ -271,6 +278,24 @@ export default function CardEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element.id]);
+
+  // Auto-initialize maxSelection for dropdowns with multi-choice enabled
+  // Only initialize if selectionType is 'multiple' and maxSelection is truly unset
+  useEffect(() => {
+    if (element.type === 'dropdown' && element.config.selectionType === 'multiple' && showSelectionConfig) {
+      const maxOptions = element.config.options?.length || 10;
+      const currentMaxSelection = element.config.maxSelection;
+      
+      // Only set if maxSelection is completely unset (undefined or null)
+      // Don't override if it's already set (even if < 2, let SelectionConfiguration handle it)
+      if (currentMaxSelection === undefined || currentMaxSelection === null) {
+        onUpdateElement(stepIndex, element.id, {
+          config: { ...element.config, maxSelection: maxOptions }
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element.type, element.id, element.config.selectionType, showSelectionConfig]);
 
   return (
     <div className="mt-2 space-y-2">
@@ -678,22 +703,73 @@ export default function CardEditor({
         </>
       )}
 
-      {/* Selection Configuration */}
-      {showSelectionConfig && (
-        <SelectionConfiguration
-          elementId={element.id}
-          selectionType={element.config.selectionType}
-          maxSelection={element.config.maxSelection}
-          maxOptions={element.config.options?.length || 10}
-          primaryColor={primaryColor}
-          onSelectionTypeChange={(selectionType) => onUpdateElement(stepIndex, element.id, {
-            config: { ...element.config, selectionType }
-          })}
-          onMaxSelectionChange={(maxSelection) => onUpdateElement(stepIndex, element.id, {
-            config: { ...element.config, maxSelection }
-          })}
-        />
+      {/* Multi-choice toggle for dropdowns - appears after options, before SelectionConfiguration */}
+      {element.type === 'dropdown' && (
+        <div className="mt-4">
+          <Checkbox
+            id={`multi-choice-${element.id}`}
+            checked={element.config.selectionType === 'multiple'}
+            onChange={(e) =>
+              onUpdateElement(stepIndex, element.id, {
+                config: {
+                  ...element.config,
+                  selectionType: e.target.checked ? 'multiple' : 'single',
+                  // When enabling multi-choice, set default maxSelection to maxOptions (unlimited)
+                  maxSelection: e.target.checked
+                    ? (element.config.options?.length || 10)
+                    : element.config.maxSelection,
+                },
+              })
+            }
+            label="Enable multi-choice"
+          />
+        </div>
       )}
+
+      {/* Selection Configuration */}
+      {showSelectionConfig && element.config.selectionType === 'multiple' && (() => {
+        const maxOptions = element.config.options?.length || 10;
+        // For dropdowns, pass the actual maxSelection value - SelectionConfiguration will handle the logic
+        const maxSelection = element.config.maxSelection;
+        
+        return (
+          <SelectionConfiguration
+            elementId={element.id}
+            selectionType={element.config.selectionType}
+            maxSelection={maxSelection}
+            maxOptions={maxOptions}
+            primaryColor={primaryColor}
+            itemLabel={element.type === 'dropdown' ? 'option' : 'card'}
+            isDropdown={element.type === 'dropdown'}
+            onCombinedChange={(updates) => {
+              // Use combined callback to update both values atomically
+              // Use ref to get latest config, avoiding stale closure
+              const currentConfig = elementConfigRef.current;
+              onUpdateElement(stepIndex, element.id, {
+                config: { 
+                  ...currentConfig, 
+                  ...(updates.selectionType !== undefined && { selectionType: updates.selectionType }),
+                  ...(updates.maxSelection !== undefined && { maxSelection: updates.maxSelection })
+                }
+              });
+            }}
+            onSelectionTypeChange={(selectionType) => {
+              // Fallback for non-dropdowns or when onCombinedChange is not used
+              const currentConfig = elementConfigRef.current;
+              onUpdateElement(stepIndex, element.id, {
+                config: { ...currentConfig, selectionType }
+              });
+            }}
+            onMaxSelectionChange={(newMaxSelection) => {
+              // Fallback when onCombinedChange is not used
+              const currentConfig = elementConfigRef.current;
+              onUpdateElement(stepIndex, element.id, {
+                config: { ...currentConfig, maxSelection: newMaxSelection }
+              });
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

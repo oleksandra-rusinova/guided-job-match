@@ -59,8 +59,18 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
       try {
         console.log('Loading prototype with ID:', prototypeId);
         const data = await getPrototype(prototypeId);
-        console.log('Prototype loaded:', data ? 'Found' : 'Not found', data);
-        setPrototype(data || null);
+        console.log('Prototype loaded:', data ? 'Found' : 'Not found', {
+          prototypeId,
+          hasData: !!data,
+          dataId: data?.id
+        });
+        if (data) {
+          setPrototype(data);
+        } else {
+          // Prototype not found - set to null to show error
+          console.warn('Prototype not found or access denied:', prototypeId);
+          setPrototype(null);
+        }
       } catch (error) {
         console.error('Error loading prototype:', error);
         setPrototype(null);
@@ -84,6 +94,8 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
     }
 
     // Subscribe to changes on this specific prototype
+    // Note: Realtime subscription may fail for public users if RLS blocks it
+    // This is okay - the initial load will still work
     const channel = supabase
       .channel(`prototype-${prototypeId}`)
       .on(
@@ -113,6 +125,7 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
 
             if (error) {
               console.error('Error fetching prototype after Realtime event:', error);
+              // Don't update state if there's an error - keep current prototype
               return;
             }
 
@@ -121,11 +134,14 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
             }
           } catch (error) {
             console.error('Error processing Realtime event:', error);
+            // Don't update state if there's an error - keep current prototype
           }
         }
       )
       .subscribe((status) => {
         console.log('Realtime subscription status:', status);
+        // Only set connected if subscription succeeds
+        // For public users, subscription might fail due to RLS, which is okay
         setIsConnected(status === 'SUBSCRIBED');
       });
 

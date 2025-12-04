@@ -38,16 +38,49 @@ export default function ImageCard({
     return 'Default';
   };
 
-  // Determine border color based on state (matching TextField logic)
+  // Helper function to convert color to rgba with opacity
+  const colorToRgba = (color: string, opacity: number): string => {
+    const normalized = color.trim().toLowerCase();
+    
+    // Handle hex colors
+    if (normalized.startsWith('#')) {
+      const hex = normalized.slice(1);
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+    
+    // Handle rgb/rgba colors
+    const rgbMatch = normalized.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) {
+      const r = parseInt(rgbMatch[1], 10);
+      const g = parseInt(rgbMatch[2], 10);
+      const b = parseInt(rgbMatch[3], 10);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+    
+    return color;
+  };
+
+  // Determine border color and width based on state
   let borderColor: string;
+  let outlineWidth: number;
   if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
+  } else if (selected && isHovered) {
+    borderColor = primaryColor;
+    outlineWidth = 3; // 3px stroke on hover+selected
   } else if (selected) {
     borderColor = primaryColor;
+    outlineWidth = 2; // 2px stroke when selected
   } else if (isHovered) {
     borderColor = '#9CA3AF'; // gray-400
+    outlineWidth = 1; // 1px stroke on hover
   } else {
     borderColor = '#E5E7EB'; // gray-200
+    outlineWidth = 1;
   }
 
   return (
@@ -57,12 +90,13 @@ export default function ImageCard({
       disabled={disabled}
       onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-1 outline-offset-[-1px] ${getOutlineClasses()} flex flex-col ${
+      className={`relative w-full text-left rounded-2xl bg-white transition-all shadow-[0px_2px_14px_0px_rgba(53,59,70,0.15)] outline outline-offset-[-1px] ${getOutlineClasses()} flex flex-col ${
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{ 
         minHeight: '140px',
         outlineColor: borderColor,
+        outlineWidth: `${outlineWidth}px`,
       }}
     >
       {/* Selection Indicator */}
@@ -94,6 +128,15 @@ export default function ImageCard({
            alt={title}
            className="w-full h-48 object-cover"
          />
+         {/* Overlay when selected */}
+         {selected && !disabled && (
+           <div 
+             className="absolute inset-0"
+             style={{
+               backgroundColor: colorToRgba(primaryColor, 0.2),
+             }}
+           />
+         )}
        </div>
       
        {/* Text Content */}

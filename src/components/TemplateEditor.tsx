@@ -252,6 +252,8 @@ export default function TemplateEditor({
             { id: '1', title: 'Option 1' },
             { id: '2', title: 'Option 2' },
           ],
+          selectionType: 'single' as 'single' | 'multiple',
+          maxSelection: 1,
         };
       case 'calendar_field':
         return {
