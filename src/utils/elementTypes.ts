@@ -7,10 +7,10 @@ export const ELEMENT_TYPES: Array<{ type: ElementType; label: string }> = [
   { type: 'checkboxes', label: 'Checkbox' },
   { type: 'simple_cards', label: 'Text Cards' },
   { type: 'yes_no_cards', label: 'Yes/No Cards' },
-  { type: 'image_cards', label: 'Cards with Image' },
-  { type: 'image_only_card', label: 'Image Only Card' },
+  { type: 'image_cards', label: 'Text Image Cards' },
+  { type: 'image_only_card', label: 'Image Only Cards' },
   { type: 'advanced_cards', label: 'Advanced Cards' },
-  { type: 'application_card', label: 'Application Card' },
+  { type: 'application_card', label: 'Application Cards' },
 ];
 
 export const getElementLabel = (elementType: ElementType): string => {

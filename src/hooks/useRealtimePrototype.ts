@@ -3,11 +3,13 @@ import { Prototype } from '../types';
 import { supabase } from '../utils/supabase';
 import { getPrototype } from '../utils/storage';
 import { usePresence } from './usePresence';
+import { useLoading } from '../contexts/LoadingContext';
 
 export function useRealtimePrototype(prototypeId: string | null, userId?: string, userName?: string, initialPrototype?: Prototype) {
   const [prototype, setPrototype] = useState<Prototype | null>(initialPrototype || null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(!initialPrototype);
+  const { withLoading } = useLoading();
 
   // Set up presence tracking for this prototype
   const channelName = prototypeId ? `prototype-presence-${prototypeId}` : '';
@@ -58,7 +60,7 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
     const loadInitialData = async () => {
       try {
         console.log('Loading prototype with ID:', prototypeId);
-        const data = await getPrototype(prototypeId);
+        const data = await withLoading(() => getPrototype(prototypeId));
         console.log('Prototype loaded:', data ? 'Found' : 'Not found', {
           prototypeId,
           hasData: !!data,
@@ -80,7 +82,7 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
     };
 
     loadInitialData();
-  }, [prototypeId, initialPrototype]);
+  }, [prototypeId, initialPrototype, withLoading]);
 
   // Set up Realtime subscription for specific prototype
   useEffect(() => {
@@ -117,21 +119,23 @@ export function useRealtimePrototype(prototypeId: string | null, userId?: string
           // Fetch updated prototype
           try {
             if (!supabase) return;
-            const { data, error } = await supabase
-              .from('prototypes')
-              .select('*')
-              .eq('id', prototypeId)
-              .single();
+            await withLoading(async () => {
+              const { data, error } = await supabase
+                .from('prototypes')
+                .select('*')
+                .eq('id', prototypeId)
+                .single();
 
-            if (error) {
-              console.error('Error fetching prototype after Realtime event:', error);
-              // Don't update state if there's an error - keep current prototype
-              return;
-            }
+              if (error) {
+                console.error('Error fetching prototype after Realtime event:', error);
+                // Don't update state if there's an error - keep current prototype
+                return;
+              }
 
-            if (data) {
-              setPrototype(transformRecord(data));
-            }
+              if (data) {
+                setPrototype(transformRecord(data));
+              }
+            });
           } catch (error) {
             console.error('Error processing Realtime event:', error);
             // Don't update state if there's an error - keep current prototype

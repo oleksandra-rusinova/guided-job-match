@@ -9,6 +9,7 @@ import HowItWorksModal from './HowItWorksModal';
 
 interface HomePageProps {
   prototypes: Prototype[];
+  isLoading?: boolean;
   onCreateNew: () => void;
   onUseTemplate: () => void;
   onOpenPrototype: (id: string) => void;
@@ -18,7 +19,7 @@ interface HomePageProps {
   onOpenTemplates: () => void;
 }
 
-export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpenPrototype, onEditPrototype, onDuplicatePrototype, onDeletePrototype, onOpenTemplates }: HomePageProps) {
+export default function HomePage({ prototypes, isLoading = false, onCreateNew, onUseTemplate, onOpenPrototype, onEditPrototype, onDuplicatePrototype, onDeletePrototype, onOpenTemplates }: HomePageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -116,7 +117,14 @@ export default function HomePage({ prototypes, onCreateNew, onUseTemplate, onOpe
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {prototypes.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading prototypes...</p>
+            </div>
+          </div>
+        ) : prototypes.length === 0 ? (
           <div className="text-center py-20">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-200 rounded-full mb-4">
               <Plus size={32} className="text-gray-400" />

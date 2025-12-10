@@ -15,6 +15,7 @@ import FileUploader from './FileUploader';
 import EditorField from './EditorField';
 import TemplateNameModal from './TemplateNameModal';
 import TemplateSelector from './TemplateSelector';
+import SystemMessageModal from './SystemMessageModal';
 import Tooltip from './Tooltip';
 import PresenceIndicator from './PresenceIndicator';
 import { usePresence } from '../hooks/usePresence';
@@ -30,6 +31,8 @@ import {
   getApplicationStepTemplates,
   saveApplicationStepTemplate,
   createApplicationStepTemplate,
+  getTemplateStorageInfo,
+  getStorageUsage,
 } from '../utils/templates';
 
 interface CreatePrototypeProps {
@@ -125,6 +128,18 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   const [showApplicationStepTemplateModal, setShowApplicationStepTemplateModal] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [templateSelectorType, setTemplateSelectorType] = useState<'question' | 'prototype' | 'applicationStep'>('question');
+  
+  // System message modal state
+  const [systemMessage, setSystemMessage] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    instructions?: string[];
+    additionalInfo?: string;
+  }>({
+    isOpen: false,
+    message: '',
+  });
   const [stepToSaveAsTemplate, setStepToSaveAsTemplate] = useState<string | null>(null);
   const [showAddStepDropdown, setShowAddStepDropdown] = useState(false);
   const [questionTemplates, setQuestionTemplates] = useState<QuestionTemplate[]>([]);
@@ -133,9 +148,21 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
 
   // Load templates on mount
   useEffect(() => {
-    setQuestionTemplates(getQuestionTemplates());
-    setPrototypeTemplates(getPrototypeTemplates());
-    setApplicationStepTemplates(getApplicationStepTemplates());
+    const loadTemplates = async () => {
+      try {
+        const [questions, prototypes, applications] = await Promise.all([
+          getQuestionTemplates(),
+          getPrototypeTemplates(),
+          getApplicationStepTemplates(),
+        ]);
+        setQuestionTemplates(questions);
+        setPrototypeTemplates(prototypes);
+        setApplicationStepTemplates(applications);
+      } catch (error) {
+        console.error('Error loading templates:', error);
+      }
+    };
+    loadTemplates();
   }, []);
 
   // Determine if this prototype was saved before (has an ID and exists in storage)
@@ -236,43 +263,114 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     setNewlyAddedStepId(newStep.id);
   };
 
-  const handleSaveQuestionTemplate = (templateName: string) => {
+  const handleSaveQuestionTemplate = async (templateName: string) => {
     if (!stepToSaveAsTemplate) return;
     const step = steps.find(s => s.id === stepToSaveAsTemplate);
     if (step) {
-      const template = createQuestionTemplate(templateName, step);
-      saveQuestionTemplate(template);
-      setQuestionTemplates(getQuestionTemplates());
+      const template = await createQuestionTemplate(templateName, step);
+      await saveQuestionTemplate(template);
+      const updatedTemplates = await getQuestionTemplates();
+      setQuestionTemplates(updatedTemplates);
       setStepToSaveAsTemplate(null);
     }
   };
 
-  const handleSaveApplicationStepTemplate = (templateName: string) => {
+  const handleSaveApplicationStepTemplate = async (templateName: string) => {
     if (!stepToSaveAsTemplate) return;
     const step = steps.find(s => s.id === stepToSaveAsTemplate);
     if (step && step.isApplicationStep) {
-      const template = createApplicationStepTemplate(templateName, step);
-      saveApplicationStepTemplate(template);
-      setApplicationStepTemplates(getApplicationStepTemplates());
+      const template = await createApplicationStepTemplate(templateName, step);
+      await saveApplicationStepTemplate(template);
+      const updatedTemplates = await getApplicationStepTemplates();
+      setApplicationStepTemplates(updatedTemplates);
       setStepToSaveAsTemplate(null);
     }
   };
 
-  const handleSavePrototypeTemplate = (templateName: string) => {
-    const prototype: Prototype = {
-      id: editingPrototype?.id || crypto.randomUUID(),
-      name,
-      description,
-      primaryColor,
-      logoUrl: logoUploadMode === 'url' ? logoUrl : logoFile ? logoUrl : editingPrototype?.logoUrl,
-      logoUploadMode,
-      steps,
-      createdAt: editingPrototype?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const template = createPrototypeTemplate(templateName, prototype);
-    savePrototypeTemplate(template);
-    setPrototypeTemplates(getPrototypeTemplates());
+  const handleSavePrototypeTemplate = async (templateName: string) => {
+    try {
+      console.log('Starting template save process...', { templateName, stepsCount: steps.length });
+      
+      const prototype: Prototype = {
+        id: editingPrototype?.id || crypto.randomUUID(),
+        name,
+        description,
+        primaryColor,
+        logoUrl: logoUploadMode === 'url' ? logoUrl : logoFile ? logoUrl : editingPrototype?.logoUrl,
+        logoUploadMode,
+        steps,
+        createdAt: editingPrototype?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      // Log steps with images for debugging
+      const stepsWithImages = steps.filter(s => s.imageUrl && s.imageUrl.startsWith('data:'));
+      console.log(`Found ${stepsWithImages.length} steps with base64 images`);
+      
+      // Create template with image compression (async)
+      console.log('Creating template with image compression...');
+      const template = await createPrototypeTemplate(templateName, prototype);
+      console.log('Template created successfully:', { 
+        templateId: template.id, 
+        stepsCount: template.prototype.steps.length,
+        stepsWithImages: template.prototype.steps.filter(s => s.imageUrl).length
+      });
+      
+      console.log('Saving template to IndexedDB/localStorage...');
+      try {
+        await savePrototypeTemplate(template);
+        console.log('Template saved successfully');
+      } catch (saveError) {
+        console.error('Error saving template:', saveError);
+        throw saveError; // Re-throw to be caught by outer catch
+      }
+      
+      // Reload templates to verify it was saved
+      const updatedTemplates = await getPrototypeTemplates();
+      console.log('Templates after save:', updatedTemplates.length);
+      const savedTemplate = updatedTemplates.find(t => t.id === template.id);
+      if (savedTemplate) {
+        console.log('Template verified in storage:', savedTemplate.name);
+        console.log('Template steps:', savedTemplate.prototype.steps.length);
+        savedTemplate.prototype.steps.forEach((step, idx) => {
+          const hasImage = !!step.imageUrl;
+          const imageLength = step.imageUrl?.length || 0;
+          console.log(`Step ${idx}: hasImage=${hasImage}, imageUrl length=${imageLength}, imageUrl preview=${step.imageUrl?.substring(0, 50) || 'none'}...`);
+        });
+      } else {
+        console.error('Template NOT found in storage after save!');
+        throw new Error('Template was not saved successfully - not found in storage after save operation');
+      }
+      
+      setPrototypeTemplates(updatedTemplates);
+      setShowPrototypeTemplateModal(false);
+      
+      console.log('Template saved successfully. Images were compressed to reduce storage size.');
+    } catch (error) {
+      console.error('Error saving prototype template:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('quota') || errorMessage.includes('QuotaExceededError')) {
+        const storageInfo = getTemplateStorageInfo();
+        const storageUsage = getStorageUsage();
+        setSystemMessage({
+          isOpen: true,
+          message: `Storage quota exceeded (${storageUsage.percentage.toFixed(1)}% used). Please:`,
+          instructions: [
+            'Remove some existing templates, or',
+            'Clear browser localStorage',
+          ],
+          additionalInfo: `Images are compressed before saving, but you may have too many templates stored.\n\nCurrent storage:\n- Prototype templates: ${storageInfo.prototypeTemplates.count} (${(storageInfo.prototypeTemplates.size / 1024 / 1024).toFixed(2)} MB)\n- Question templates: ${storageInfo.questionTemplates.count} (${(storageInfo.questionTemplates.size / 1024 / 1024).toFixed(2)} MB)\n- Application templates: ${storageInfo.applicationStepTemplates.count} (${(storageInfo.applicationStepTemplates.size / 1024 / 1024).toFixed(2)} MB)`,
+        });
+      } else {
+        setSystemMessage({
+          isOpen: true,
+          message: `Failed to save template: ${errorMessage}`,
+          additionalInfo: 'Check the browser console for more details.',
+        });
+      }
+    }
   };
 
   const handleSelectQuestionTemplate = (template: QuestionTemplate | PrototypeTemplate) => {
@@ -286,6 +384,24 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
           id: crypto.randomUUID(),
         })),
       };
+      setSteps([...steps, newStep]);
+      setExpandedStepId(newStep.id);
+      setNewlyAddedStepId(newStep.id);
+    }
+  };
+
+  const handleSelectApplicationStepTemplate = (template: ApplicationStepTemplate) => {
+    if ('step' in template) {
+      const newStep: Step = {
+        ...template.step,
+        id: crypto.randomUUID(),
+        name: 'Application Step',
+        elements: template.step.elements.map(el => ({
+          ...el,
+          id: crypto.randomUUID(),
+        })),
+      };
+      // Application steps always go at the end
       setSteps([...steps, newStep]);
       setExpandedStepId(newStep.id);
       setNewlyAddedStepId(newStep.id);
@@ -566,12 +682,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
         };
       case 'yes_no_cards':
         return {
-          options: [
-            { id: '1', title: 'Yes' },
-            { id: '2', title: 'No' },
-          ],
-          selectionType: 'single' as 'single' | 'multiple',
-          maxSelection: 1,
+          yesText: 'Yes',
+          noText: 'No',
         };
       case 'application_card':
         return {
@@ -798,7 +910,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                           style={{ color: '#464F5E' }}
                         >
-                          Add a template
+                          Add from template
                         </button>
                       </div>
                     </>
@@ -856,8 +968,15 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                             <span className="font-medium" style={{ color: '#464F5E' }}>
                               {step.name}
                             </span>
-                            {step.question && expandedStepId !== step.id && (
-                              <span className="text-sm text-gray-500">- {step.question}</span>
+                                {step.question && expandedStepId !== step.id && (
+                              <>
+                                <span className="text-sm text-gray-500">- {step.question}</span>
+                                {step.elements && step.elements.length > 0 && (
+                                  <span className="px-2 py-0.5 text-xs font-normal rounded bg-gray-100 text-gray-700 font-['Poppins']">
+                                    {getElementLabel(step.elements[0].type)}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                     <div className="flex items-center justify-center gap-2">
@@ -1263,17 +1382,38 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 )}
 
                                 {element.type === 'yes_no_cards' && (
-                                  <CardEditor
-                                    element={element}
-                                    stepIndex={steps.findIndex(s => s.id === step.id)}
-                                    onUpdateElement={(stepIndex, elementId, updates) => {
-                                      const targetStep = steps[stepIndex];
-                                      updateElement(targetStep.id, elementId, updates);
-                                    }}
-                                    primaryColor={primaryColor}
-                                    showSelectionConfig={false}
-                                    disableAddCard={true}
-                                  />
+                                  <div className="mt-3 space-y-3">
+                                    <div>
+                                      <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                        Yes Text
+                                      </label>
+                                      <EditorField
+                                        value={element.config.yesText || 'Yes'}
+                                        onChange={(value) =>
+                                          updateElement(step.id, element.id, {
+                                            config: { ...element.config, yesText: value },
+                                          })
+                                        }
+                                        placeholder="Yes"
+                                        className="w-full"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                        No Text
+                                      </label>
+                                      <EditorField
+                                        value={element.config.noText || 'No'}
+                                        onChange={(value) =>
+                                          updateElement(step.id, element.id, {
+                                            config: { ...element.config, noText: value },
+                                          })
+                                        }
+                                        placeholder="No"
+                                        className="w-full"
+                                      />
+                                    </div>
+                                  </div>
                                 )}
 
                                  {(element.type === 'simple_cards' || element.type === 'checkboxes' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards' || element.type === 'application_card') && (
@@ -1698,11 +1838,29 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       <TemplateSelector
         isOpen={showTemplateSelector}
         onClose={() => setShowTemplateSelector(false)}
-        onSelect={templateSelectorType === 'prototype' ? handleSelectPrototypeTemplate : handleSelectQuestionTemplate}
+        onSelect={(template) => {
+          if (templateSelectorType === 'prototype') {
+            handleSelectPrototypeTemplate(template as PrototypeTemplate);
+          } else if ('step' in template && (template as ApplicationStepTemplate).step.isApplicationStep) {
+            handleSelectApplicationStepTemplate(template as ApplicationStepTemplate);
+          } else if ('step' in template) {
+            handleSelectQuestionTemplate(template as QuestionTemplate);
+          }
+        }}
         questionTemplates={questionTemplates}
         prototypeTemplates={prototypeTemplates}
         applicationStepTemplates={applicationStepTemplates}
         type={templateSelectorType}
+        showTabs={templateSelectorType !== 'prototype'} // Show tabs for step templates, not prototype templates
+      />
+
+      <SystemMessageModal
+        isOpen={systemMessage.isOpen}
+        onClose={() => setSystemMessage({ ...systemMessage, isOpen: false })}
+        title={systemMessage.title}
+        message={systemMessage.message}
+        instructions={systemMessage.instructions}
+        additionalInfo={systemMessage.additionalInfo}
       />
     </div>
   );

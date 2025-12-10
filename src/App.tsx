@@ -10,6 +10,8 @@ import PrototypeView from './components/PrototypeView';
 import TemplatesPage from './components/TemplatesPage';
 import TemplateSelector from './components/TemplateSelector';
 import Login from './components/Login';
+import { LoadingProvider, useLoading } from './contexts/LoadingContext';
+import Loader from './components/Loader';
 
 // Protected Route Component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -29,14 +31,15 @@ function AppContent() {
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
 
   // Use Realtime hook for prototypes - automatically updates on changes
-  const { prototypes, updatePrototypeInState, removePrototypeFromState } = useRealtimePrototypes();
+  const { prototypes, updatePrototypeInState, removePrototypeFromState, isLoading } = useRealtimePrototypes();
+  const { withLoading } = useLoading();
 
   useEffect(() => {
     setPrototypeTemplates(getPrototypeTemplates());
   }, []);
 
   const handleSavePrototype = async (prototype: Prototype) => {
-    const result = await savePrototype(prototype);
+    const result = await withLoading(() => savePrototype(prototype));
     // Update local state immediately for instant UI feedback
     if (result.success && result.data) {
       updatePrototypeInState(result.data);
@@ -47,7 +50,7 @@ function AppContent() {
 
   const handleDeletePrototype = async (id: string) => {
     if (confirm('Are you sure you want to delete this prototype?')) {
-      await deletePrototype(id);
+      await withLoading(() => deletePrototype(id));
       // Update local state immediately for instant UI feedback
       removePrototypeFromState(id);
       // Realtime will also update, but local state update provides instant feedback
@@ -68,7 +71,7 @@ function AppContent() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      const result = await savePrototype(duplicated);
+      const result = await withLoading(() => savePrototype(duplicated));
       // Update local state immediately for instant UI feedback
       if (result.success && result.data) {
         updatePrototypeInState(result.data);
@@ -183,6 +186,7 @@ function AppContent() {
             <ProtectedRoute>
               <HomePage
                 prototypes={prototypes}
+                isLoading={isLoading}
                 onCreateNew={handleCreateNew}
                 onUseTemplate={handleUseTemplate}
                 onOpenPrototype={handleOpenPrototype}
@@ -251,8 +255,11 @@ function AppContent() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <LoadingProvider>
+      <BrowserRouter>
+        <AppContent />
+        <Loader />
+      </BrowserRouter>
+    </LoadingProvider>
   );
 }

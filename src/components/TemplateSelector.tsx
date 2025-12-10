@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, Search } from 'lucide-react';
 import { QuestionTemplate, PrototypeTemplate, ApplicationStepTemplate } from '../types';
+import Tabs from './Tabs';
 
 interface TemplateSelectorProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface TemplateSelectorProps {
   prototypeTemplates?: PrototypeTemplate[];
   applicationStepTemplates?: ApplicationStepTemplate[];
   type: 'question' | 'prototype' | 'applicationStep';
+  showTabs?: boolean; // New prop to show tabs for step templates
 }
 
 export default function TemplateSelector({
@@ -20,12 +22,23 @@ export default function TemplateSelector({
   prototypeTemplates = [],
   applicationStepTemplates = [],
   type,
+  showTabs = false,
 }: TemplateSelectorProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'question' | 'applicationStep'>(type === 'applicationStep' ? 'applicationStep' : 'question');
 
-  const templates = type === 'question' 
+  // Reset active tab when modal opens and showTabs is true
+  useEffect(() => {
+    if (isOpen && showTabs) {
+      setActiveTab(type === 'applicationStep' ? 'applicationStep' : 'question');
+    }
+  }, [isOpen, showTabs, type]);
+
+  // Determine which templates to show based on active tab or type
+  const currentType = showTabs ? activeTab : type;
+  const templates = currentType === 'question' 
     ? questionTemplates 
-    : type === 'prototype' 
+    : currentType === 'prototype' 
     ? prototypeTemplates 
     : applicationStepTemplates;
 
@@ -39,6 +52,17 @@ export default function TemplateSelector({
     onSelect(template);
     setSearchQuery('');
     onClose();
+  };
+
+  const getTitle = () => {
+    if (showTabs) {
+      return 'Select Template';
+    }
+    return type === 'question' 
+      ? 'Select Question Template' 
+      : type === 'prototype' 
+      ? 'Select Prototype Template' 
+      : 'Select Application Template';
   };
 
   if (!isOpen) return null;
@@ -57,11 +81,7 @@ export default function TemplateSelector({
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium" style={{ color: '#464F5E' }}>
-                {type === 'question' 
-                  ? 'Select Question Template' 
-                  : type === 'prototype' 
-                  ? 'Select Prototype Template' 
-                  : 'Select Application Template'}
+                {getTitle()}
               </h3>
               <button
                 onClick={onClose}
@@ -70,6 +90,24 @@ export default function TemplateSelector({
                 <X size={20} />
               </button>
             </div>
+            
+            {/* Tabs for choosing between Question and Application templates */}
+            {showTabs && (
+              <div className="mb-4">
+                <Tabs
+                  tabs={[
+                    { label: 'Question Template', badge: questionTemplates.length },
+                    { label: 'Application Template', badge: applicationStepTemplates.length },
+                  ]}
+                  activeTab={activeTab === 'question' ? 0 : 1}
+                  onTabChange={(index) => {
+                    setActiveTab(index === 0 ? 'question' : 'applicationStep');
+                    setSearchQuery(''); // Clear search when switching tabs
+                  }}
+                />
+              </div>
+            )}
+
             <div className="relative">
               <Search
                 size={18}
@@ -86,7 +124,7 @@ export default function TemplateSelector({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {filteredTemplates.length > 0 ? (
               <div className="space-y-2">
                 {filteredTemplates.map((template) => (
@@ -98,17 +136,17 @@ export default function TemplateSelector({
                     <div className="font-medium" style={{ color: '#464F5E' }}>
                       {template.name}
                     </div>
-                    {type === 'question' && 'step' in template && (
+                    {currentType === 'question' && 'step' in template && (
                       <div className="text-sm text-gray-500 mt-1">
                         {template.step.question || 'No question'}
                       </div>
                     )}
-                    {type === 'prototype' && 'prototype' in template && (
+                    {currentType === 'prototype' && 'prototype' in template && (
                       <div className="text-sm text-gray-500 mt-1">
                         {template.prototype.steps.length} step{template.prototype.steps.length !== 1 ? 's' : ''}
                       </div>
                     )}
-                    {type === 'applicationStep' && 'step' in template && (
+                    {currentType === 'applicationStep' && 'step' in template && (
                       <div className="text-sm text-gray-500 mt-1">
                         {template.step.applicationStepHeading || 'No heading'}
                       </div>

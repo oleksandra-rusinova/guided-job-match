@@ -288,7 +288,7 @@ export default function ApplicationCard({
                 style={{ 
                   backgroundColor: disabled 
                     ? '#F3F4F6' 
-                    : (isHovered || isApplyButtonHovered) 
+                    : isApplyButtonHovered 
                       ? getHoverColor(primaryColor) 
                       : primaryColor 
                 }}
@@ -306,7 +306,7 @@ export default function ApplicationCard({
               style={{ 
                 backgroundColor: disabled 
                   ? '#F3F4F6' 
-                  : (isHovered || isApplyButtonHovered) 
+                  : isApplyButtonHovered 
                     ? getHoverColor(primaryColor) 
                     : primaryColor 
               }}
