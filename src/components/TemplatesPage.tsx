@@ -12,9 +12,11 @@ import {
   savePrototypeTemplate,
   saveApplicationStepTemplate,
 } from '../utils/templates';
+import { saveAllToStore } from '../utils/indexedDB';
 import IconButton from './IconButton';
 import TemplateNameModal from './TemplateNameModal';
 import TemplateEditor from './TemplateEditor';
+import SystemMessageModal from './SystemMessageModal';
 import Tabs from './Tabs';
 import Tooltip from './Tooltip';
 
@@ -41,15 +43,57 @@ export default function TemplatesPage({
   const [showNameModal, setShowNameModal] = useState(false);
   const [templateToRename, setTemplateToRename] = useState<{ type: 'question' | 'prototype' | 'applicationStep'; id: string } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  
+  // System message modal state
+  const [systemMessage, setSystemMessage] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    instructions?: string[];
+    additionalInfo?: string;
+  }>({
+    isOpen: false,
+    message: '',
+  });
 
   useEffect(() => {
     loadTemplates();
   }, []);
 
-  const loadTemplates = () => {
-    setQuestionTemplates(getQuestionTemplates());
-    setPrototypeTemplates(getPrototypeTemplates());
-    setApplicationStepTemplates(getApplicationStepTemplates());
+  // Reload templates when the page becomes visible (user returns from CreatePrototype)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadTemplates();
+      }
+    };
+    
+    const handleFocus = () => {
+      loadTemplates();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  const loadTemplates = async () => {
+    try {
+      const [questions, prototypes, applications] = await Promise.all([
+        getQuestionTemplates(),
+        getPrototypeTemplates(),
+        getApplicationStepTemplates(),
+      ]);
+      setQuestionTemplates(questions);
+      setPrototypeTemplates(prototypes);
+      setApplicationStepTemplates(applications);
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    }
   };
 
   const templates = activeTabIndex === 0 
@@ -58,13 +102,29 @@ export default function TemplatesPage({
     ? prototypeTemplates 
     : applicationStepTemplates;
 
+  // Auto-select first template when templates are loaded or tab changes
+  useEffect(() => {
+    // Only auto-select if no template is currently selected and there are templates available
+    if (!selectedTemplate && templates.length > 0) {
+      const type = activeTabIndex === 0 
+        ? 'question' 
+        : activeTabIndex === 1 
+        ? 'prototype' 
+        : 'applicationStep';
+      setSelectedTemplate({
+        type: type as 'question' | 'prototype' | 'applicationStep',
+        template: templates[0],
+      });
+    }
+  }, [templates, activeTabIndex, selectedTemplate]);
+
   const filteredTemplates = useMemo(() => {
     if (!searchQuery.trim()) return templates;
     const query = searchQuery.toLowerCase();
     return templates.filter(t => t.name.toLowerCase().includes(query));
   }, [templates, searchQuery]);
 
-  const handleDeleteTemplate = (id: string) => {
+  const handleDeleteTemplate = async (id: string) => {
     const type = activeTabIndex === 0 ? 'question' : activeTabIndex === 1 ? 'prototype' : 'applicationStep';
     const confirmMessage = type === 'question' 
       ? 'Are you sure you want to delete this question template?'
@@ -73,169 +133,201 @@ export default function TemplatesPage({
       : 'Are you sure you want to delete this application template?';
     
     if (confirm(confirmMessage)) {
-      if (type === 'question') {
-        deleteQuestionTemplate(id);
-      } else if (type === 'prototype') {
-        deletePrototypeTemplate(id);
-      } else {
-        deleteApplicationStepTemplate(id);
-      }
-      loadTemplates();
-      if (selectedTemplate?.template.id === id) {
-        setSelectedTemplate(null);
+      try {
+        if (type === 'question') {
+          await deleteQuestionTemplate(id);
+        } else if (type === 'prototype') {
+          await deletePrototypeTemplate(id);
+        } else {
+          await deleteApplicationStepTemplate(id);
+        }
+        await loadTemplates();
+        if (selectedTemplate?.template.id === id) {
+          setSelectedTemplate(null);
+        }
+      } catch (error) {
+        console.error('Error deleting template:', error);
+        setSystemMessage({
+          isOpen: true,
+          message: 'Failed to delete template. Please try again.',
+        });
       }
     }
   };
 
-  const handleRename = (name: string) => {
+  const handleRename = async (name: string) => {
     if (!templateToRename) return;
     
-    if (templateToRename.type === 'question') {
-      const template = questionTemplates.find(t => t.id === templateToRename.id);
-      if (template) {
-        const updated = { ...template, name };
-        saveQuestionTemplate(updated);
-        loadTemplates();
-        if (selectedTemplate?.template.id === template.id) {
-          setSelectedTemplate({ type: 'question', template: updated });
+    try {
+      if (templateToRename.type === 'question') {
+        const template = questionTemplates.find(t => t.id === templateToRename.id);
+        if (template) {
+          const updated = { ...template, name };
+          await saveQuestionTemplate(updated);
+          await loadTemplates();
+          if (selectedTemplate?.template.id === template.id) {
+            setSelectedTemplate({ type: 'question', template: updated });
+          }
+        }
+      } else if (templateToRename.type === 'prototype') {
+        const template = prototypeTemplates.find(t => t.id === templateToRename.id);
+        if (template) {
+          const updated = { ...template, name };
+          await savePrototypeTemplate(updated);
+          await loadTemplates();
+          if (selectedTemplate?.template.id === template.id) {
+            setSelectedTemplate({ type: 'prototype', template: updated });
+          }
+        }
+      } else {
+        const template = applicationStepTemplates.find(t => t.id === templateToRename.id);
+        if (template) {
+          const updated = { ...template, name };
+          await saveApplicationStepTemplate(updated);
+          await loadTemplates();
+          if (selectedTemplate?.template.id === template.id) {
+            setSelectedTemplate({ type: 'applicationStep', template: updated });
+          }
         }
       }
-    } else if (templateToRename.type === 'prototype') {
-      const template = prototypeTemplates.find(t => t.id === templateToRename.id);
-      if (template) {
-        const updated = { ...template, name };
-        savePrototypeTemplate(updated);
-        loadTemplates();
-        if (selectedTemplate?.template.id === template.id) {
-          setSelectedTemplate({ type: 'prototype', template: updated });
-        }
-      }
-    } else {
-      const template = applicationStepTemplates.find(t => t.id === templateToRename.id);
-      if (template) {
-        const updated = { ...template, name };
-        saveApplicationStepTemplate(updated);
-        loadTemplates();
-        if (selectedTemplate?.template.id === template.id) {
-          setSelectedTemplate({ type: 'applicationStep', template: updated });
-        }
-      }
+      
+      setTemplateToRename(null);
+    } catch (error) {
+      console.error('Error renaming template:', error);
+      setSystemMessage({
+        isOpen: true,
+        message: 'Failed to rename template. Please try again.',
+      });
     }
-    
-    setTemplateToRename(null);
   };
 
-  const handleSaveTemplate = (name: string, steps: any[]) => {
+  const handleSaveTemplate = async (name: string, steps: any[]) => {
     if (!selectedTemplate) return;
 
-    if (selectedTemplate.type === 'question') {
-      const template = selectedTemplate.template as QuestionTemplate;
-      const updated: QuestionTemplate = {
-        ...template,
-        name,
-        step: steps[0] || template.step,
-      };
-      saveQuestionTemplate(updated);
-      loadTemplates();
-      setSelectedTemplate({ type: 'question', template: updated });
-    } else if (selectedTemplate.type === 'prototype') {
-      const template = selectedTemplate.template as PrototypeTemplate;
-      const updated: PrototypeTemplate = {
-        ...template,
-        name,
-        prototype: {
-          ...template.prototype,
-          steps,
-        },
-      };
-      savePrototypeTemplate(updated);
-      loadTemplates();
-      setSelectedTemplate({ type: 'prototype', template: updated });
-    } else {
-      const template = selectedTemplate.template as ApplicationStepTemplate;
-      const updated: ApplicationStepTemplate = {
-        ...template,
-        name,
-        step: steps[0] || template.step,
-      };
-      saveApplicationStepTemplate(updated);
-      loadTemplates();
-      setSelectedTemplate({ type: 'applicationStep', template: updated });
+    try {
+      if (selectedTemplate.type === 'question') {
+        const template = selectedTemplate.template as QuestionTemplate;
+        const updated: QuestionTemplate = {
+          ...template,
+          name,
+          step: steps[0] || template.step,
+        };
+        await saveQuestionTemplate(updated);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'question', template: updated });
+      } else if (selectedTemplate.type === 'prototype') {
+        const template = selectedTemplate.template as PrototypeTemplate;
+        const updated: PrototypeTemplate = {
+          ...template,
+          name,
+          prototype: {
+            ...template.prototype,
+            steps,
+          },
+        };
+        await savePrototypeTemplate(updated);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'prototype', template: updated });
+      } else {
+        const template = selectedTemplate.template as ApplicationStepTemplate;
+        const updated: ApplicationStepTemplate = {
+          ...template,
+          name,
+          step: steps[0] || template.step,
+        };
+        await saveApplicationStepTemplate(updated);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'applicationStep', template: updated });
+      }
+    } catch (error) {
+      console.error('Error saving template:', error);
+      setSystemMessage({
+        isOpen: true,
+        message: 'Failed to save template. Please try again.',
+      });
     }
   };
 
-  const handleCreateTemplate = (name: string) => {
-    if (activeTabIndex === 0) {
-      // Create question template
-      const newTemplate: QuestionTemplate = {
-        id: crypto.randomUUID(),
-        name,
-        step: {
+  const handleCreateTemplate = async (name: string) => {
+    try {
+      if (activeTabIndex === 0) {
+        // Create question template
+        const newTemplate: QuestionTemplate = {
           id: crypto.randomUUID(),
-          name: 'Step 1',
-          question: '',
-          description: '',
-          splitScreenWithImage: false,
-          imageUrl: '',
-          imageUploadMode: 'upload',
-          imagePosition: 'right',
-          imageHasTitle: false,
-          imageTitle: '',
-          imageSubtitle: '',
-          elements: [],
-        },
-        createdAt: new Date().toISOString(),
-      };
-      saveQuestionTemplate(newTemplate);
-      loadTemplates();
-      setSelectedTemplate({ type: 'question', template: newTemplate });
-    } else if (activeTabIndex === 1) {
-      // Create prototype template
-      const newTemplate: PrototypeTemplate = {
-        id: crypto.randomUUID(),
-        name,
-        prototype: {
-          name: '',
-          description: '',
-          primaryColor: '#4D3EE0',
-          logoUrl: '',
-          logoUploadMode: 'upload',
-          steps: [],
-        },
-        createdAt: new Date().toISOString(),
-      };
-      savePrototypeTemplate(newTemplate);
-      loadTemplates();
-      setSelectedTemplate({ type: 'prototype', template: newTemplate });
-    } else {
-      // Create application template
-      const newTemplate: ApplicationStepTemplate = {
-        id: crypto.randomUUID(),
-        name,
-        step: {
+          name,
+          step: {
+            id: crypto.randomUUID(),
+            name: 'Step 1',
+            question: '',
+            description: '',
+            splitScreenWithImage: false,
+            imageUrl: '',
+            imageUploadMode: 'upload',
+            imagePosition: 'right',
+            imageHasTitle: false,
+            imageTitle: '',
+            imageSubtitle: '',
+            elements: [],
+          },
+          createdAt: new Date().toISOString(),
+        };
+        await saveQuestionTemplate(newTemplate);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'question', template: newTemplate });
+      } else if (activeTabIndex === 1) {
+        // Create prototype template
+        const newTemplate: PrototypeTemplate = {
           id: crypto.randomUUID(),
-          name: 'Application Step',
-          question: '',
-          description: '',
-          splitScreenWithImage: false,
-          imageUrl: '',
-          imageUploadMode: 'upload',
-          imagePosition: 'right',
-          imageHasTitle: false,
-          imageTitle: '',
-          imageSubtitle: '',
-          elements: [],
-          isApplicationStep: true,
-          applicationStepHeading: '',
-          applicationStepSubheading: '',
-        },
-        createdAt: new Date().toISOString(),
-      };
-      saveApplicationStepTemplate(newTemplate);
-      loadTemplates();
-      setSelectedTemplate({ type: 'applicationStep', template: newTemplate });
+          name,
+          prototype: {
+            name: '',
+            description: '',
+            primaryColor: '#4D3EE0',
+            logoUrl: '',
+            logoUploadMode: 'upload',
+            steps: [],
+          },
+          createdAt: new Date().toISOString(),
+        };
+        await savePrototypeTemplate(newTemplate);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'prototype', template: newTemplate });
+      } else {
+        // Create application template
+        const newTemplate: ApplicationStepTemplate = {
+          id: crypto.randomUUID(),
+          name,
+          step: {
+            id: crypto.randomUUID(),
+            name: 'Application Step',
+            question: '',
+            description: '',
+            splitScreenWithImage: false,
+            imageUrl: '',
+            imageUploadMode: 'upload',
+            imagePosition: 'right',
+            imageHasTitle: false,
+            imageTitle: '',
+            imageSubtitle: '',
+            elements: [],
+            isApplicationStep: true,
+            applicationStepHeading: '',
+            applicationStepSubheading: '',
+          },
+          createdAt: new Date().toISOString(),
+        };
+        await saveApplicationStepTemplate(newTemplate);
+        await loadTemplates();
+        setSelectedTemplate({ type: 'applicationStep', template: newTemplate });
+      }
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Error creating template:', error);
+      setSystemMessage({
+        isOpen: true,
+        message: 'Failed to create template. Please try again.',
+      });
     }
-    setShowCreateModal(false);
   };
 
   const getTemplateSteps = () => {
@@ -249,10 +341,43 @@ export default function TemplatesPage({
     }
   };
 
+  const handleClearAllTemplates = async () => {
+    const type = activeTabIndex === 0 ? 'question' : activeTabIndex === 1 ? 'prototype' : 'applicationStep';
+    const confirmMessage = type === 'question'
+      ? 'Are you sure you want to delete ALL question templates? This cannot be undone.'
+      : type === 'prototype'
+      ? 'Are you sure you want to delete ALL prototype templates? This cannot be undone.'
+      : 'Are you sure you want to delete ALL application templates? This cannot be undone.';
+    
+    if (confirm(confirmMessage)) {
+      try {
+        if (type === 'question') {
+          await saveAllToStore('questionTemplates', []);
+          localStorage.setItem('questionTemplates', '[]');
+        } else if (type === 'prototype') {
+          await saveAllToStore('prototypeTemplates', []);
+          localStorage.setItem('prototypeTemplates', '[]');
+        } else {
+          await saveAllToStore('applicationStepTemplates', []);
+          localStorage.setItem('applicationStepTemplates', '[]');
+        }
+        await loadTemplates();
+        setSelectedTemplate(null);
+      } catch (error) {
+        console.error('Error clearing templates:', error);
+        setSystemMessage({
+          isOpen: true,
+          message: 'Failed to clear templates. Please try again.',
+        });
+      }
+    }
+  };
+
+
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <div className="border-b border-gray-200 px-6 py-4">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
+      {/* Fixed Header */}
+      <div className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 px-6 py-4 z-50">
         <div className="flex items-center gap-2 mb-4">
           <IconButton
             onClick={onBack}
@@ -286,10 +411,10 @@ export default function TemplatesPage({
         />
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
-          <div className="p-4 border-b border-gray-200 bg-white">
+      <div className="flex flex-1 overflow-hidden pt-[140px]">
+        {/* Fixed Sidebar */}
+        <div className="fixed left-0 top-[140px] bottom-0 w-80 border-r border-gray-200 flex flex-col bg-gray-50 z-40">
+          <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold" style={{ color: '#464F5E' }}>
                 {activeTabIndex === 0 
@@ -298,14 +423,17 @@ export default function TemplatesPage({
                   ? 'Prototype Templates' 
                   : 'Application Templates'}
               </h2>
-              <Tooltip content="Create template">
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                >
-                  <Plus size={18} />
-                </button>
-              </Tooltip>
+              <div className="flex items-center gap-2">
+                <Tooltip content="Create template">
+                  <IconButton
+                    onClick={() => setShowCreateModal(true)}
+                    icon={<Plus size={20} />}
+                    variant="text"
+                    primaryColor="#4D3EE0"
+                    aria-label="Create template"
+                  />
+                </Tooltip>
+              </div>
             </div>
             <div className="relative">
               <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -320,7 +448,7 @@ export default function TemplatesPage({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {filteredTemplates.length === 0 ? (
               <div className="p-4 text-center">
                 <p className="text-sm text-gray-500">
@@ -400,7 +528,7 @@ export default function TemplatesPage({
         </div>
 
         {/* Editor Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col ml-80 min-h-0">
           {selectedTemplate ? (
             <TemplateEditor
               templateName={selectedTemplate.template.name}
@@ -408,7 +536,8 @@ export default function TemplatesPage({
               onSave={handleSaveTemplate}
               onCancel={() => setSelectedTemplate(null)}
               primaryColor="#4D3EE0"
-              isQuestionTemplate={selectedTemplate.type === 'question' || selectedTemplate.type === 'applicationStep'}
+              isQuestionTemplate={selectedTemplate.type === 'question'}
+              isApplicationStepTemplate={selectedTemplate.type === 'applicationStep'}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-white">
@@ -440,6 +569,16 @@ export default function TemplatesPage({
         onSave={handleCreateTemplate}
         title={`Create ${activeTabIndex === 0 ? 'Question' : activeTabIndex === 1 ? 'Prototype' : 'Application'} Template`}
         placeholder="Enter template name"
+      />
+
+      {/* System Message Modal */}
+      <SystemMessageModal
+        isOpen={systemMessage.isOpen}
+        onClose={() => setSystemMessage({ ...systemMessage, isOpen: false })}
+        title={systemMessage.title}
+        message={systemMessage.message}
+        instructions={systemMessage.instructions}
+        additionalInfo={systemMessage.additionalInfo}
       />
     </div>
   );

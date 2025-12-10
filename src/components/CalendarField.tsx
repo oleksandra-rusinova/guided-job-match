@@ -42,8 +42,18 @@ export default function CalendarField({
     borderColor = '#E5E7EB'; // gray-200
   }
 
+  // Placeholder color is always consistent regardless of label state
   const placeholderColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500
   const textColor = disabled ? '#9CA3AF' : (value ? '#3F3F46' : '#64748B'); // gray-400 : (zinc-700 : slate-500)
+  
+  // Placeholder typography - always consistent
+  const placeholderTypography = {
+    fontSize: 16,
+    fontFamily: 'Poppins',
+    fontWeight: 400,
+    lineHeight: '24px',
+    letterSpacing: 0.2,
+  };
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -197,32 +207,42 @@ export default function CalendarField({
             onChange={() => {}}
           />
           <div className="flex-1 flex justify-start items-center">
-            <div className="flex-1 justify-start text-base font-normal font-['Poppins'] leading-6 tracking-tight">
+            <div className="flex-1 justify-start">
               {!value ? (
-                <span style={{ color: placeholderColor }}>
+                <span
+                  style={{
+                    color: placeholderColor,
+                    ...placeholderTypography,
+                  }}
+                >
                   {placeholder}
                 </span>
               ) : (
-                <span style={{ color: textColor }}>
-              {(() => {
-                try {
-                  // Parse date string as YYYY-MM-DD in local timezone
-                  const [year, month, day] = value.split('-').map(Number);
-                  if (year && month && day) {
-                    const date = new Date(year, month - 1, day);
-                    if (!isNaN(date.getTime())) {
-                      return date.toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                      });
+                <span
+                  style={{
+                    color: textColor,
+                    ...placeholderTypography,
+                  }}
+                >
+                  {(() => {
+                    try {
+                      // Parse date string as YYYY-MM-DD in local timezone
+                      const [year, month, day] = value.split('-').map(Number);
+                      if (year && month && day) {
+                        const date = new Date(year, month - 1, day);
+                        if (!isNaN(date.getTime())) {
+                          return date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                          });
+                        }
+                      }
+                      return value;
+                    } catch {
+                      return value;
                     }
-                  }
-                  return value;
-                } catch {
-                  return value;
-                }
-              })()}
+                  })()}
                 </span>
               )}
             </div>

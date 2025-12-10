@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Trash2, Plus, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
+import { useLoading } from '../contexts/LoadingContext';
 
 type OptionType = NonNullable<Element['config']['options']>[number];
-import { savePrototype } from '../utils/storage';
+import { updatePrototype } from '../utils/storage';
 import { useRealtimePrototype } from '../hooks/useRealtimePrototype';
 import { useAutoSave } from '../hooks/useAutoSave';
 import AutoSaveIndicator from './AutoSaveIndicator';
@@ -63,7 +64,27 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
   const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
   const [showRefineSelectionModal, setShowRefineSelectionModal] = useState(false);
+  const [isManualSaving, setIsManualSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const savedPageRef = useRef<number | null>(null);
   const totalPages = stepsState.length;
+
+  // Ensure currentPage stays within valid bounds when steps change
+  // But preserve saved page if we just saved
+  useEffect(() => {
+    if (totalPages > 0 && currentPage >= totalPages) {
+      // If we have a saved page ref and it's valid, use it
+      if (savedPageRef.current !== null && savedPageRef.current < totalPages) {
+        setCurrentPage(savedPageRef.current);
+      } else {
+        setCurrentPage(Math.max(0, totalPages - 1));
+      }
+    }
+    // If currentPage was reset to 0 but we have a saved page, restore it
+    if (currentPage === 0 && savedPageRef.current !== null && savedPageRef.current > 0 && savedPageRef.current < totalPages) {
+      setCurrentPage(savedPageRef.current);
+    }
+  }, [totalPages, currentPage]);
 
   const canGoBack = currentPage > 0;
   const canGoNext = currentPage < totalPages - 1;
@@ -71,15 +92,27 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const currentStep: Step | undefined = stepsState[currentPage];
 
   // Sync stepsState when prototype updates from Realtime
+  // But don't overwrite local changes when manually saving or right after saving
   useEffect(() => {
+    // Skip sync entirely if we just saved or are currently saving
+    if (isManualSaving || justSaved) {
+      return;
+    }
+    
     if (prototype && prototype.steps) {
-      setStepsState(prototype.steps);
-      // Update original state when prototype changes (but not when editor is open)
+      // Only sync if editor is closed
       if (!isEditorOpen) {
-        setOriginalStepsState(prototype.steps);
+        // Check if the prototype steps are actually different from current state
+        const currentStepsStr = JSON.stringify(stepsState);
+        const newStepsStr = JSON.stringify(prototype.steps);
+        if (currentStepsStr !== newStepsStr) {
+          console.log('Syncing stepsState from prototype update');
+          setStepsState(prototype.steps);
+          setOriginalStepsState(prototype.steps);
+        }
       }
     }
-  }, [prototype, isEditorOpen]);
+  }, [prototype, isEditorOpen, isManualSaving, justSaved, stepsState]);
 
   // Store original steps state when editor opens
   useEffect(() => {
@@ -457,22 +490,104 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     }
   };
 
-  const handleSave = async () => {
-    const updatedPrototype: Prototype = {
-      ...prototype,
-      steps: stepsState,
-      updatedAt: new Date().toISOString(),
-    };
-    const result = await savePrototype(updatedPrototype);
-    // Update local state immediately for instant UI feedback
-    if (result.success && result.data) {
-      updatePrototypeInState(result.data);
-      // Also update local stepsState to match
-      setStepsState(result.data.steps);
-      // Update original state to reflect saved state
-      setOriginalStepsState(result.data.steps);
+  const handleSave = async (e?: React.MouseEvent) => {
+    // Prevent any default behavior
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
-    setIsEditorOpen(false);
+    
+    if (!prototype || !hasChanges) {
+      console.log('handleSave: No changes to save or no prototype');
+      return;
+    }
+    
+    // Store current page before saving to preserve it
+    const savedCurrentPage = currentPage;
+    savedPageRef.current = savedCurrentPage;
+    console.log('handleSave: Starting save, currentPage:', savedCurrentPage);
+    
+    setIsManualSaving(true);
+    setJustSaved(true); // Set this early to prevent sync effect from interfering
+    
+    try {
+      // Build the updated prototype with current stepsState
+      const updatedPrototype: Prototype = {
+        ...prototype,
+        steps: stepsState,
+        updatedAt: new Date().toISOString(),
+      };
+      
+      console.log('handleSave: Saving prototype with', updatedPrototype.steps.length, 'steps');
+      console.log('handleSave: Steps data:', JSON.stringify(updatedPrototype.steps).substring(0, 200));
+      
+      // Save directly using updatePrototype (same as useAutoSave uses internally)
+      const result = await updatePrototype(updatedPrototype.id, {
+        name: updatedPrototype.name,
+        description: updatedPrototype.description,
+        primaryColor: updatedPrototype.primaryColor,
+        logoUrl: updatedPrototype.logoUrl,
+        logoUploadMode: updatedPrototype.logoUploadMode,
+        steps: updatedPrototype.steps,
+      });
+      
+      console.log('handleSave: Save result:', result.success, result.error);
+      
+      if (result.success && result.data) {
+        console.log('handleSave: Save successful, updating state');
+        console.log('handleSave: Saved steps count:', result.data.steps.length);
+        console.log('handleSave: Saved steps preview:', JSON.stringify(result.data.steps).substring(0, 300));
+        
+        // Update local state immediately - this is critical
+        // Update the parent state first so realtime updates don't overwrite
+        updatePrototypeInState(result.data);
+        
+        // Update local steps state with saved data
+        setStepsState(result.data.steps);
+        // Update original state to reflect saved state (prevent showing "unsaved changes")
+        setOriginalStepsState(result.data.steps);
+        
+        // Explicitly preserve currentPage - use ref to ensure it persists
+        console.log('handleSave: Preserving currentPage:', savedCurrentPage);
+        setCurrentPage(savedCurrentPage);
+        savedPageRef.current = savedCurrentPage;
+        
+        // Close the editor but keep the current page - don't reset currentPage
+        setIsEditorOpen(false);
+        
+        // Keep justSaved flag active to prevent sync effect from overwriting
+        // Restore currentPage immediately and on intervals
+        const restorePage = () => {
+          if (savedPageRef.current !== null) {
+            setCurrentPage(savedPageRef.current);
+            console.log('handleSave: Restored currentPage to:', savedPageRef.current);
+          }
+        };
+        
+        // Restore page multiple times to ensure it sticks
+        setTimeout(restorePage, 0);
+        setTimeout(restorePage, 50);
+        setTimeout(restorePage, 100);
+        setTimeout(restorePage, 200);
+        
+        // Clear the justSaved flag after a delay to allow realtime updates to settle
+        // But keep checking and restoring currentPage
+        setTimeout(() => {
+          restorePage();
+          setJustSaved(false);
+          console.log('handleSave: Cleared justSaved flag, final currentPage:', savedPageRef.current);
+        }, 2000);
+      } else {
+        console.error('handleSave: Save failed:', result.error);
+        setJustSaved(false); // Allow sync if save failed
+        setIsEditorOpen(false);
+      }
+    } catch (error) {
+      console.error('Error saving prototype:', error);
+      setJustSaved(false); // Allow sync if save failed
+    } finally {
+      setIsManualSaving(false);
+    }
   };
 
   const renderStep = () => {
@@ -567,21 +682,23 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             const isFieldElement = fieldTypes.includes(el.type);
             const prevElement = index > 0 ? currentStep.elements[index - 1] : null;
             const prevIsFieldElement = prevElement ? fieldTypes.includes(prevElement.type) : false;
-            // Add 24px margin-top only if this is a field element and previous element is also a field element
-            // When there are multiple fields, ensure no vertical padding/margins except the 24px gap
+            // Base gap: 24px margin-top for all elements except the first
+            const baseGapStyle = index > 0 ? { marginTop: '24px' } : {};
+            // Field gap logic: only applies special spacing when we have consecutive field elements
+            // For consecutive fields, use 24px gap. For non-consecutive fields, use base gap (24px)
             const fieldGapStyle = (isFieldElement && prevIsFieldElement && hasMultipleFields) 
               ? { marginTop: '24px', marginBottom: '0', paddingTop: '0', paddingBottom: '0' } 
-              : (isFieldElement && hasMultipleFields)
-                ? { marginTop: '0', marginBottom: '0', paddingTop: '0', paddingBottom: '0' }
+              : (isFieldElement && hasMultipleFields && !prevIsFieldElement)
+                ? {} // Let baseGapStyle handle the gap (24px) when field follows non-field
                 : {};
             
             if (el.type === 'text_field') {
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
-                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : { width: '680px', margin: '0 auto', padding: '0' };
@@ -605,10 +722,10 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             if (el.type === 'dropdown') {
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
-                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : { width: '680px', margin: '0 auto', padding: '0' };
@@ -645,10 +762,10 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
             if (el.type === 'calendar_field') {
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
-                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : { width: '680px', margin: '0 auto', padding: '0' };
@@ -727,7 +844,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 : {};
               
               return (
-                <div key={el.id} className="w-full" style={cardPadding}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
                     {options.map((opt: OptionType) => (
                       <SimpleCard
@@ -802,7 +919,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 : {};
               
               return (
-                <div key={el.id} className="w-full" style={cardPadding}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
                     {options.map((opt: OptionType) => (
                       <ImageCard
@@ -849,10 +966,10 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
               const containerStyle = isSplitScreen 
-                ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
-                  ? { ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { marginTop: '120px', marginBottom: '120px', padding: '0', display: 'block' };
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : { width: '680px', margin: '0 auto', padding: '0' };
@@ -985,7 +1102,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 : {};
               
               return (
-                <div key={el.id} className="w-full" style={cardPadding}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                   <div className={`grid ${gridCols} gap-[24px]`}>
                     {options.map((opt: OptionType) => (
                       <AdvancedCard
@@ -1066,7 +1183,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 : {};
               
               return (
-                <div key={el.id} className="w-full" style={cardPadding}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                   <div className={`grid ${gridCols}`} style={{ gap: '24px' }}>
                     {options.map((opt: OptionType) => (
                       <ImageOnlyCard
@@ -1108,7 +1225,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               // In split screen mode, use grid layout with 2 columns and 24px gap
               if (isSplitScreen) {
                 return (
-                  <div key={el.id} className="w-full" style={cardPadding}>
+                  <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                     <div className="grid grid-cols-2 gap-[24px]">
                       <YesNoCard
                         text={yesText}
@@ -1130,7 +1247,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               }
               
               return (
-                <div key={el.id} className="w-full" style={cardPadding}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
                   <YesNoCards
                     yesText={yesText}
                     noText={noText}
@@ -1181,7 +1298,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const useFixedWidth = !isSplitScreen && (numCards === 1 || numCards === 2);
               
               return (
-                <div key={el.id} className="w-full" style={{ ...cardPadding, ...spacingOverride }}>
+                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding, ...spacingOverride }}>
                   {useFixedWidth ? (
                     <div className="flex justify-center" style={{ gap: '24px' }}>
                       {options.map((opt: OptionType) => (
@@ -1926,11 +2043,19 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
               </div>
               <PrimaryButton
+                type="button"
                 onClick={handleSave}
                 className="w-full"
-                disabled={!hasChanges}
+                disabled={!hasChanges || isManualSaving}
               >
-                Save
+                {isManualSaving ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Saving...</span>
+                  </div>
+                ) : (
+                  'Save'
+                )}
               </PrimaryButton>
             </div>
           </div>

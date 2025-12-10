@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface TooltipProps {
   children: React.ReactNode;
@@ -53,9 +54,9 @@ export default function Tooltip({ children, content, delay = 300, disabled = fal
       onMouseLeave={hideTooltip}
     >
       {children}
-      {isVisible && position && (
+      {isVisible && position && createPortal(
         <div
-          className="fixed z-50 px-2 py-1 text-xs text-white bg-gray-600 rounded whitespace-nowrap pointer-events-none"
+          className="fixed z-[9999] px-2 py-1 text-xs text-white bg-gray-600 rounded whitespace-nowrap pointer-events-none"
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
@@ -66,7 +67,8 @@ export default function Tooltip({ children, content, delay = 300, disabled = fal
           <div
             className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-600"
           />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

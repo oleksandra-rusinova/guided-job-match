@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 
 interface TextFieldProps {
@@ -46,7 +46,11 @@ export default function TextField({
   // Text colors
   const labelColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500
   const inputTextColor = disabled ? '#9CA3AF' : (value ? '#3F3F46' : '#64748B'); // gray-400 : (zinc-700 : slate-500)
+  const placeholderColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500 - always consistent regardless of label state
   const helperTextColor = error ? '#DC2626' : (disabled ? '#9CA3AF' : '#64748B'); // red-600 : (gray-400 : slate-500)
+  
+  // Generate unique ID for this field instance to ensure placeholder styles are scoped
+  const fieldId = useMemo(() => `text-field-${Math.random().toString(36).substr(2, 9)}`, []);
 
   return (
     <div className="w-full flex flex-col justify-start items-start gap-2">
@@ -74,15 +78,27 @@ export default function TextField({
         )}
         <div className="flex-1 flex justify-start items-center">
           <div className="flex-1 justify-start text-base font-normal font-['Poppins'] leading-6 tracking-tight">
+            <style dangerouslySetInnerHTML={{__html: `
+              input[data-field-id="${fieldId}"]::placeholder {
+                color: ${placeholderColor} !important;
+                opacity: 1;
+                font-size: 16px;
+                font-family: 'Poppins', sans-serif;
+                font-weight: 400;
+                line-height: 24px;
+                letter-spacing: 0.2px;
+              }
+            `}} />
             <input
               type="text"
+              data-field-id={fieldId}
               disabled={disabled}
               value={value}
               onChange={(e) => onChange(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder={placeholder}
-              className="flex-1 w-full justify-start text-base font-normal font-['Poppins'] leading-6 tracking-tight focus:outline-none bg-transparent border-none outline-none placeholder:text-slate-500"
+              className="flex-1 w-full justify-start text-base font-normal font-['Poppins'] leading-6 tracking-tight focus:outline-none bg-transparent border-none outline-none"
               style={{
                 color: inputTextColor,
                 paddingLeft: leftIcon ? '2.5rem' : undefined,

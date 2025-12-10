@@ -93,7 +93,7 @@ export default function ImageOnlyCard({
       style={{ 
         minHeight: isFourCards ? 'auto' : '280px',
         height: isFourCards ? '100%' : 'auto',
-        maxHeight: isFourCards ? '280px' : undefined,
+        maxHeight: '280px',
         aspectRatio: isFourCards ? '1 / 1' : undefined,
         outlineColor: borderColor,
         outlineWidth: `${outlineWidth}px`,

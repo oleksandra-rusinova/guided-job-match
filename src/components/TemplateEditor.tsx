@@ -20,6 +20,7 @@ interface TemplateEditorProps {
   onCancel: () => void;
   primaryColor?: string;
   isQuestionTemplate?: boolean;
+  isApplicationStepTemplate?: boolean;
 }
 
 export default function TemplateEditor({
@@ -29,6 +30,7 @@ export default function TemplateEditor({
   onCancel: _onCancel,
   primaryColor = '#4D3EE0',
   isQuestionTemplate = false,
+  isApplicationStepTemplate = false,
 }: TemplateEditorProps) {
   const [name, setName] = useState(initialName);
   const [steps, setSteps] = useState<Step[]>(initialSteps);
@@ -38,12 +40,86 @@ export default function TemplateEditor({
   const [newlyAddedStepId, setNewlyAddedStepId] = useState<string | null>(null);
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const savedStateRef = useRef<{ name: string; steps: Step[] }>({ name: initialName, steps: initialSteps });
+  const contentScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setName(initialName);
     setSteps(initialSteps);
-    savedStateRef.current = { name: initialName, steps: initialSteps };
+    // Normalize the saved state the same way we normalize on save to ensure consistent comparison
+    savedStateRef.current = { 
+      name: initialName, 
+      steps: JSON.parse(JSON.stringify(initialSteps)) 
+    };
+    // Reset scroll position to top when template changes
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
   }, [initialName, initialSteps]);
+
+  // Deep equality function for comparing configs
+  // Normalizes objects by removing undefined values to handle serialization inconsistencies
+  const deepEqualConfig = (a: any, b: any): boolean => {
+    // Handle primitive values and null/undefined
+    if (a === b) return true;
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    
+    // Handle arrays (like options in card configs)
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      
+      // If array items have 'id' property, compare by ID to handle reordering
+      if (a.length > 0 && typeof a[0] === 'object' && a[0] !== null && 'id' in a[0]) {
+        const mapA = new Map(a.map((item: any) => [item.id, item]));
+        const mapB = new Map(b.map((item: any) => [item.id, item]));
+        
+        if (mapA.size !== mapB.size) return false;
+        
+        for (const [id, itemA] of mapA) {
+          const itemB = mapB.get(id);
+          if (!itemB || !deepEqualConfig(itemA, itemB)) return false;
+        }
+        return true;
+      }
+      
+      // Otherwise compare by index
+      for (let i = 0; i < a.length; i++) {
+        if (!deepEqualConfig(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    
+    // If one is array and other isn't
+    if (Array.isArray(a) || Array.isArray(b)) return false;
+    
+    // Handle objects
+    if (typeof a === 'object' && typeof b === 'object') {
+      // Get all keys from both objects, filtering out undefined values
+      const allKeys = new Set([
+        ...Object.keys(a).filter(k => a[k] !== undefined),
+        ...Object.keys(b).filter(k => b[k] !== undefined)
+      ]);
+      
+      for (const key of allKeys) {
+        const valA = a[key];
+        const valB = b[key];
+        
+        // If both are undefined, they're equal (normalized)
+        if (valA === undefined && valB === undefined) continue;
+        
+        // If one is undefined and other isn't, they're different
+        if (valA === undefined || valB === undefined) return false;
+        
+        // Recursively compare values
+        if (!deepEqualConfig(valA, valB)) return false;
+      }
+      
+      return true;
+    }
+    
+    // Handle primitives
+    return a === b;
+  };
 
   const hasChanges = useMemo(() => {
     if (name !== savedStateRef.current.name) return true;
@@ -55,7 +131,8 @@ export default function TemplateEditor({
       const savedStep = savedStateRef.current.steps[i];
       if (!savedStep) return true;
       
-      if (currentStep.question !== savedStep.question ||
+      if (currentStep.name !== savedStep.name ||
+          currentStep.question !== savedStep.question ||
           currentStep.description !== savedStep.description ||
           currentStep.splitScreenWithImage !== savedStep.splitScreenWithImage ||
           currentStep.imageUrl !== savedStep.imageUrl ||
@@ -64,20 +141,29 @@ export default function TemplateEditor({
           currentStep.imageHasTitle !== savedStep.imageHasTitle ||
           currentStep.imageTitle !== savedStep.imageTitle ||
           currentStep.imageSubtitle !== savedStep.imageSubtitle ||
+          currentStep.isApplicationStep !== savedStep.isApplicationStep ||
+          (currentStep.applicationStepHeading || '') !== (savedStep.applicationStepHeading || '') ||
+          (currentStep.applicationStepSubheading || '') !== (savedStep.applicationStepSubheading || '') ||
           currentStep.elements.length !== savedStep.elements.length) {
         return true;
       }
       
-      // Compare elements
-      for (let j = 0; j < currentStep.elements.length; j++) {
-        const currentElement = currentStep.elements[j];
-        const savedElement = savedStep.elements[j];
-        if (!savedElement) return true;
+      // Compare elements - match by ID to handle reordering
+      const currentElementMap = new Map(currentStep.elements.map(el => [el.id, el]));
+      const savedElementMap = new Map(savedStep.elements.map(el => [el.id, el]));
+      
+      // Check if all current elements exist in saved state
+      for (const [id, currentElement] of currentElementMap) {
+        const savedElement = savedElementMap.get(id);
+        if (!savedElement) return true; // Element was added
         if (currentElement.type !== savedElement.type ||
-            JSON.stringify(currentElement.config) !== JSON.stringify(savedElement.config)) {
-          return true;
+            !deepEqualConfig(currentElement.config, savedElement.config)) {
+          return true; // Element changed
         }
       }
+      
+      // Check if any saved elements were removed
+      if (currentElementMap.size !== savedElementMap.size) return true;
     }
     
     return false;
@@ -130,18 +216,30 @@ export default function TemplateEditor({
   };
 
   const CARD_ELEMENT_TYPES: ElementType[] = ['simple_cards', 'image_cards', 'advanced_cards', 'image_only_card', 'yes_no_cards'];
+  const APPLICATION_CARD_TYPE: ElementType = 'application_card';
 
   const hasCardElement = (stepId: string): boolean => {
     const step = steps.find(s => s.id === stepId);
     if (!step) return false;
+    if (step.isApplicationStep || isApplicationStepTemplate) {
+      return step.elements.some(el => el.type === APPLICATION_CARD_TYPE);
+    }
     return step.elements.some(el => CARD_ELEMENT_TYPES.includes(el.type));
   };
 
   const isCardElement = (type: ElementType): boolean => {
-    return CARD_ELEMENT_TYPES.includes(type);
+    return CARD_ELEMENT_TYPES.includes(type) || type === APPLICATION_CARD_TYPE;
   };
 
   const addElement = (stepId: string, type: ElementType) => {
+    // For application step templates, only allow application_card
+    const step = steps.find(s => s.id === stepId);
+    if (isApplicationStepTemplate && step && (step.isApplicationStep || isApplicationStepTemplate)) {
+      if (type !== APPLICATION_CARD_TYPE) {
+        return; // Don't allow adding non-application-card elements to application steps
+      }
+    }
+    
     if (isCardElement(type) && hasCardElement(stepId)) {
       return;
     }
@@ -263,12 +361,8 @@ export default function TemplateEditor({
         };
       case 'yes_no_cards':
         return {
-          options: [
-            { id: '1', title: 'Yes' },
-            { id: '2', title: 'No' },
-          ],
-          selectionType: 'single' as 'single' | 'multiple',
-          maxSelection: 1,
+          yesText: 'Yes',
+          noText: 'No',
         };
       case 'application_card':
         return {
@@ -304,9 +398,16 @@ export default function TemplateEditor({
       step.id === stepId
         ? {
             ...step,
-            elements: step.elements.map(el =>
-              el.id === elementId ? { ...el, ...updates } : el
-            ),
+            elements: step.elements.map(el => {
+              if (el.id === elementId) {
+                // Properly merge config updates to avoid overwriting other config properties
+                if (updates.config && el.config) {
+                  return { ...el, ...updates, config: { ...el.config, ...updates.config } };
+                }
+                return { ...el, ...updates };
+              }
+              return el;
+            }),
           }
         : step
     ));
@@ -340,220 +441,289 @@ export default function TemplateEditor({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
+      {/* Fixed Header */}
+      <div className="fixed top-[140px] left-80 right-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-30">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: '#464F5E' }}>
             {name}
           </h2>
         </div>
-        <div className="flex items-center gap-3">
-          <Tooltip content="No changes to save" disabled={hasChanges}>
-            <PrimaryButton 
-              onClick={handleSave} 
-              disabled={!hasChanges}
-            >
-              <Save size={18} />
-              Save
-            </PrimaryButton>
-          </Tooltip>
-        </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Template Name */}
-          <div>
-            <SystemField
-              type="text"
-              value={name}
-              onChange={setName}
-              label="Template Name"
-              placeholder="Enter template name"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              A unique component name will be automatically generated based on this name.
-            </p>
-          </div>
-
+      {/* Scrollable Content */}
+      <div 
+        ref={contentScrollRef} 
+        className="flex-1 overflow-y-auto min-h-0"
+        style={{ 
+          paddingTop: '73px', // Space for fixed header
+          paddingBottom: '73px', // Space for fixed footer
+        }}
+      >
+        <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
           {/* Steps */}
           <div>
-            {isQuestionTemplate ? (
-              // Question template: render fields directly without step block
+            {isQuestionTemplate || isApplicationStepTemplate ? (
+              // Question template or Application step template: render fields directly without step block
               steps.length > 0 ? (
                 <div className="space-y-4">
                   {steps.map((step) => (
                     <div key={step.id} id={`step-${step.id}`} className="space-y-4">
-                      <SystemField
-                        type="text"
-                        value={step.question}
-                        onChange={(value) => updateStep(step.id, { question: value })}
-                        label="Question"
-                        placeholder="Enter your question"
-                      />
+                      {isApplicationStepTemplate ? (
+                        <>
+                          <SystemField
+                            type="text"
+                            value={step.applicationStepHeading || ''}
+                            onChange={(value) => updateStep(step.id, { applicationStepHeading: value })}
+                            label="Heading"
+                            placeholder="Enter heading"
+                          />
 
-                      <SystemField
-                        type="text"
-                        value={step.description}
-                        onChange={(value) => updateStep(step.id, { description: value })}
-                        label="Description"
-                        placeholder="Enter description"
-                      />
+                          <SystemField
+                            type="text"
+                            value={step.applicationStepSubheading || ''}
+                            onChange={(value) => updateStep(step.id, { applicationStepSubheading: value })}
+                            label="Subheading"
+                            placeholder="Enter subheading"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <SystemField
+                            type="text"
+                            value={step.question}
+                            onChange={(value) => updateStep(step.id, { question: value })}
+                            label="Question"
+                            placeholder="Enter your question"
+                          />
 
-                      <div>
-                        <Checkbox
-                          id={`split-${step.id}`}
-                          checked={step.splitScreenWithImage}
-                          onChange={(e) => updateStep(step.id, { splitScreenWithImage: e.target.checked })}
-                          label="Split screen with image"
-                        />
-                      </div>
+                          <SystemField
+                            type="text"
+                            value={step.description}
+                            onChange={(value) => updateStep(step.id, { description: value })}
+                            label="Description"
+                            placeholder="Enter description"
+                          />
+                        </>
+                      )}
 
-                      {step.splitScreenWithImage && (
-                        <div className="space-y-4 pl-6 border-l-2 border-gray-200">
-                          <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                              Image position
-                            </label>
-                            <TabControl
-                              options={[
-                                { value: 'left', label: 'Left' },
-                                { value: 'right', label: 'Right' }
-                              ]}
-                              value={step.imagePosition || 'right'}
-                              onChange={(value) => updateStep(step.id, { imagePosition: value as 'left' | 'right' })}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                              Image source
-                            </label>
-                            <div className="mb-3">
-                              <TabControl
-                                options={[
-                                  { value: 'upload', label: 'Upload' },
-                                  { value: 'url', label: 'URL' }
-                                ]}
-                                value={step.imageUploadMode || 'upload'}
-                                onChange={(value) => updateStep(step.id, { imageUploadMode: value as 'upload' | 'url' })}
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                              Image URL
-                            </label>
-                            {step.imageUploadMode !== 'upload' ? (
-                              <SystemField
-                                type="url"
-                                value={step.imageUrl || ''}
-                                onChange={(value) => updateStep(step.id, { imageUrl: value })}
-                                placeholder="https://example.com/image.jpg"
-                                showLabel={false}
-                              />
-                            ) : (
-                              <FileUploader
-                                value={step.imageUrl ? { name: 'Step image', size: 0, dataUrl: step.imageUrl } : undefined}
-                                onChange={(file, fileInfo) => handleStepImageUpload(step.id, file, fileInfo)}
-                                accept="image/*"
-                                maxSize={5}
-                                showPreview={true}
-                              />
-                            )}
-                          </div>
-
+                      {!isApplicationStepTemplate && (
+                        <>
                           <div>
                             <Checkbox
-                              id={`imageTitle-${step.id}`}
-                              checked={step.imageHasTitle}
-                              onChange={(e) => updateStep(step.id, { imageHasTitle: e.target.checked })}
-                              label="Image has title and subtitle"
+                              id={`split-${step.id}`}
+                              checked={step.splitScreenWithImage}
+                              onChange={(e) => updateStep(step.id, { splitScreenWithImage: e.target.checked })}
+                              label="Split screen with image"
                             />
                           </div>
 
-                          {step.imageHasTitle && (
-                            <div className="space-y-3 pl-6">
+                          {step.splitScreenWithImage && (
+                            <div className="space-y-4 pl-6 border-l-2 border-gray-200">
                               <div>
-                                <SystemField
-                                  type="text"
-                                  value={step.imageTitle || ''}
-                                  onChange={(value) => updateStep(step.id, { imageTitle: value })}
-                                  label="Image title"
-                                  placeholder="Enter image title"
+                                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                  Image position
+                                </label>
+                                <TabControl
+                                  options={[
+                                    { value: 'left', label: 'Left' },
+                                    { value: 'right', label: 'Right' }
+                                  ]}
+                                  value={step.imagePosition || 'right'}
+                                  onChange={(value) => updateStep(step.id, { imagePosition: value as 'left' | 'right' })}
                                 />
                               </div>
+
                               <div>
-                                <SystemField
-                                  type="text"
-                                  value={step.imageSubtitle || ''}
-                                  onChange={(value) => updateStep(step.id, { imageSubtitle: value })}
-                                  label="Image subtitle"
-                                  placeholder="Enter image subtitle"
+                                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                  Image source
+                                </label>
+                                <div className="mb-3">
+                                  <TabControl
+                                    options={[
+                                      { value: 'upload', label: 'Upload' },
+                                      { value: 'url', label: 'URL' }
+                                    ]}
+                                    value={step.imageUploadMode || 'upload'}
+                                    onChange={(value) => updateStep(step.id, { imageUploadMode: value as 'upload' | 'url' })}
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                  Image URL
+                                </label>
+                                {step.imageUploadMode !== 'upload' ? (
+                                  <SystemField
+                                    type="url"
+                                    value={step.imageUrl || ''}
+                                    onChange={(value) => updateStep(step.id, { imageUrl: value })}
+                                    placeholder="https://example.com/image.jpg"
+                                    showLabel={false}
+                                  />
+                                ) : (
+                                  <FileUploader
+                                    value={step.imageUrl ? { name: 'Step image', size: 0, dataUrl: step.imageUrl } : undefined}
+                                    onChange={(file, fileInfo) => handleStepImageUpload(step.id, file, fileInfo)}
+                                    accept="image/*"
+                                    maxSize={5}
+                                    showPreview={true}
+                                  />
+                                )}
+                              </div>
+
+                              <div>
+                                <Checkbox
+                                  id={`imageTitle-${step.id}`}
+                                  checked={step.imageHasTitle}
+                                  onChange={(e) => updateStep(step.id, { imageHasTitle: e.target.checked })}
+                                  label="Image has title and subtitle"
                                 />
                               </div>
+
+                              {step.imageHasTitle && (
+                                <div className="space-y-3 pl-6">
+                                  <div>
+                                    <SystemField
+                                      type="text"
+                                      value={step.imageTitle || ''}
+                                      onChange={(value) => updateStep(step.id, { imageTitle: value })}
+                                      label="Image title"
+                                      placeholder="Enter image title"
+                                    />
+                                  </div>
+                                  <div>
+                                    <SystemField
+                                      type="text"
+                                      value={step.imageSubtitle || ''}
+                                      onChange={(value) => updateStep(step.id, { imageSubtitle: value })}
+                                      label="Image subtitle"
+                                      placeholder="Enter image subtitle"
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
-                        </div>
+                        </>
                       )}
 
                       <div className="pt-4">
-                        <div className="flex justify-between items-center mb-3">
-                          <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
-                            Elements
-                          </label>
-                          <div className="relative">
-                            <TextButton
-                              onClick={() => setOpenElementMenuStepId(openElementMenuStepId === step.id ? null : step.id)}
-                              size="sm"
-                            >
-                              <Plus size={16} />
-                              Add element
-                            </TextButton>
-                            {openElementMenuStepId === step.id && (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenElementMenuStepId(null)}
-                                />
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                                  {ELEMENT_TYPES.map((type) => {
-                                    const isCardType = isCardElement(type.type);
-                                    const isDisabled = isCardType && hasCardElement(step.id);
-                                    
-                                    return (
-                                      <button
-                                        key={type.type}
-                                        onClick={() => {
-                                          if (!isDisabled) {
-                                            addElement(step.id, type.type);
-                                            setOpenElementMenuStepId(null);
-                                          }
-                                        }}
-                                        disabled={isDisabled}
-                                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                                          isDisabled 
-                                            ? 'text-gray-400 cursor-not-allowed opacity-50' 
-                                            : 'hover:bg-gray-100'
-                                        }`}
-                                        style={isDisabled ? {} : { color: '#464F5E' }}
-                                      >
-                                        {type.label}
-                                      </button>
-                                    );
-                                  })}
+                        {(() => {
+                          // Separate application cards from other elements (for application steps)
+                          const isAppStep = step.isApplicationStep || isApplicationStepTemplate;
+                          const applicationCardElements = step.elements.filter(el => el.type === 'application_card');
+                          const otherElements = isAppStep 
+                            ? step.elements.filter(el => el.type !== 'application_card')
+                            : step.elements;
+                          
+                          return (
+                            <>
+                              {/* Application Cards Section (only for application steps) */}
+                              {isApplicationStepTemplate && (
+                                <div className="mb-6">
+                                  <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-base font-medium" style={{ color: '#464F5E' }}>
+                                      Application cards configuration
+                                    </h4>
+                                  </div>
+                                  {applicationCardElements.length > 0 ? (
+                                    applicationCardElements.map((element) => (
+                                      <div key={element.id} id={`element-${element.id}`} className="mb-4">
+                                        <CardEditor
+                                          element={element}
+                                          stepIndex={steps.findIndex(s => s.id === step.id)}
+                                          onUpdateElement={(stepIndex, elementId, updates) => {
+                                            const targetStep = steps[stepIndex];
+                                            updateElement(targetStep.id, elementId, updates);
+                                          }}
+                                          primaryColor={primaryColor}
+                                          showSelectionConfig={false}
+                                          disableAddCard={false}
+                                        />
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                      <p className="text-sm text-gray-500 text-center mb-3">No cards added yet</p>
+                                      <div className="flex justify-center">
+                                        <TextButton
+                                          onClick={() => {
+                                            if (!hasCardElement(step.id)) {
+                                              addElement(step.id, APPLICATION_CARD_TYPE);
+                                            }
+                                          }}
+                                          size="sm"
+                                          disabled={hasCardElement(step.id)}
+                                        >
+                                          <Plus size={16} />
+                                          Add card
+                                        </TextButton>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                              )}
 
-                        {step.elements.length > 0 ? (
-                          <div className="space-y-2">
-                            {step.elements.map((element) => (
+                              {/* Regular Elements Section - Only show for non-application step templates */}
+                              {!isApplicationStepTemplate && (
+                                <>
+                                  <div className="flex justify-between items-center mb-3">
+                                    <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
+                                      Elements
+                                    </label>
+                                    <div className="relative">
+                                      <TextButton
+                                        onClick={() => setOpenElementMenuStepId(openElementMenuStepId === step.id ? null : step.id)}
+                                        size="sm"
+                                      >
+                                        <Plus size={16} />
+                                        Add element
+                                      </TextButton>
+                                      {openElementMenuStepId === step.id && (
+                                        <>
+                                          <div
+                                            className="fixed inset-0 z-10"
+                                            onClick={() => setOpenElementMenuStepId(null)}
+                                          />
+                                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                            {ELEMENT_TYPES.filter((type) => {
+                                              // Exclude application_card from menu for all steps
+                                              return type.type !== APPLICATION_CARD_TYPE;
+                                            }).map((type) => {
+                                              const isCardType = isCardElement(type.type);
+                                              const isDisabled = isCardType && hasCardElement(step.id);
+                                              
+                                              return (
+                                                <button
+                                                  key={type.type}
+                                                  onClick={() => {
+                                                    if (!isDisabled) {
+                                                      addElement(step.id, type.type);
+                                                      setOpenElementMenuStepId(null);
+                                                    }
+                                                  }}
+                                                  disabled={isDisabled}
+                                                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                                    isDisabled 
+                                                      ? 'text-gray-400 cursor-not-allowed opacity-50' 
+                                                      : 'hover:bg-gray-100'
+                                                  }`}
+                                                  style={isDisabled ? {} : { color: '#464F5E' }}
+                                                >
+                                                  {type.label}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {otherElements.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {otherElements.map((element) => (
                               <div
                                 key={element.id}
                                 id={`element-${element.id}`}
@@ -663,7 +833,7 @@ export default function TemplateEditor({
                                       updateElement(targetStep.id, elementId, updates);
                                     }}
                                     primaryColor={primaryColor}
-                                    showSelectionConfig={false}
+                                    showSelectionConfig={true}
                                   />
                                 )}
 
@@ -708,17 +878,38 @@ export default function TemplateEditor({
                                 )}
 
                                 {element.type === 'yes_no_cards' && (
-                                  <CardEditor
-                                    element={element}
-                                    stepIndex={steps.findIndex(s => s.id === step.id)}
-                                    onUpdateElement={(stepIndex, elementId, updates) => {
-                                      const targetStep = steps[stepIndex];
-                                      updateElement(targetStep.id, elementId, updates);
-                                    }}
-                                    primaryColor={primaryColor}
-                                    showSelectionConfig={false}
-                                    disableAddCard={true}
-                                  />
+                                  <div className="mt-3 space-y-3">
+                                    <div>
+                                      <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                        Yes Text
+                                      </label>
+                                      <EditorField
+                                        value={element.config.yesText || 'Yes'}
+                                        onChange={(value) =>
+                                          updateElement(step.id, element.id, {
+                                            config: { ...element.config, yesText: value },
+                                          })
+                                        }
+                                        placeholder="Yes"
+                                        className="w-full"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                        No Text
+                                      </label>
+                                      <EditorField
+                                        value={element.config.noText || 'No'}
+                                        onChange={(value) =>
+                                          updateElement(step.id, element.id, {
+                                            config: { ...element.config, noText: value },
+                                          })
+                                        }
+                                        placeholder="No"
+                                        className="w-full"
+                                      />
+                                    </div>
+                                  </div>
                                 )}
 
                                 {(element.type === 'simple_cards' || element.type === 'checkboxes' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards') && (
@@ -734,11 +925,16 @@ export default function TemplateEditor({
                                   />
                                 )}
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
-                        )}
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
+                                  )}
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
@@ -804,7 +1000,14 @@ export default function TemplateEditor({
                             {step.name}
                           </span>
                           {step.question && expandedStepId !== step.id && (
-                            <span className="text-sm text-gray-500">- {step.question}</span>
+                            <>
+                              <span className="text-sm text-gray-500">- {step.question}</span>
+                              {step.elements && step.elements.length > 0 && (
+                                <span className="px-2 py-0.5 text-xs font-normal rounded bg-gray-100 text-gray-700 font-['Poppins']">
+                                  {getElementLabel(step.elements[0].type)}
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -1054,20 +1257,44 @@ export default function TemplateEditor({
                                     )}
 
                                     {(element.type === 'dropdown') && (
-                                      <div className="mt-3">
-                                        <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
-                                          Placeholder
-                                        </label>
-                                        <EditorField
-                                          value={element.config.placeholder || ''}
-                                          onChange={(value) =>
+                                      <div className="mt-3 space-y-2">
+                                        <ShowLabelToggle
+                                          checked={!!element.config.hasLabel}
+                                          onChange={(checked) =>
                                             updateElement(step.id, element.id, {
-                                              config: { ...element.config, placeholder: value },
+                                              config: { ...element.config, hasLabel: checked },
                                             })
                                           }
-                                          placeholder="ex. Select industry from dropdown..."
-                                          className="w-full"
+                                          primaryColor={primaryColor}
                                         />
+                                        <div className="flex flex-col space-y-2">
+                                          {element.config.hasLabel && (
+                                            <EditorField
+                                              value={element.config.label || ''}
+                                              onChange={(value) =>
+                                                updateElement(step.id, element.id, {
+                                                  config: { ...element.config, label: value },
+                                                })
+                                              }
+                                              placeholder="Label"
+                                            />
+                                          )}
+                                          <div>
+                                            <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                              Placeholder
+                                            </label>
+                                            <EditorField
+                                              value={element.config.placeholder || ''}
+                                              onChange={(value) =>
+                                                updateElement(step.id, element.id, {
+                                                  config: { ...element.config, placeholder: value },
+                                                })
+                                              }
+                                              placeholder="ex. Select industry from dropdown..."
+                                              className="w-full"
+                                            />
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
 
@@ -1080,7 +1307,7 @@ export default function TemplateEditor({
                                           updateElement(targetStep.id, elementId, updates);
                                         }}
                                         primaryColor={primaryColor}
-                                        showSelectionConfig={false}
+                                        showSelectionConfig={true}
                                       />
                                     )}
 
@@ -1125,17 +1352,38 @@ export default function TemplateEditor({
                                     )}
 
                                     {element.type === 'yes_no_cards' && (
-                                      <CardEditor
-                                        element={element}
-                                        stepIndex={steps.findIndex(s => s.id === step.id)}
-                                        onUpdateElement={(stepIndex, elementId, updates) => {
-                                          const targetStep = steps[stepIndex];
-                                          updateElement(targetStep.id, elementId, updates);
-                                        }}
-                                        primaryColor={primaryColor}
-                                        showSelectionConfig={false}
-                                        disableAddCard={true}
-                                      />
+                                      <div className="mt-3 space-y-3">
+                                        <div>
+                                          <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                            Yes Text
+                                          </label>
+                                          <EditorField
+                                            value={element.config.yesText || 'Yes'}
+                                            onChange={(value) =>
+                                              updateElement(step.id, element.id, {
+                                                config: { ...element.config, yesText: value },
+                                              })
+                                            }
+                                            placeholder="Yes"
+                                            className="w-full"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
+                                            No Text
+                                          </label>
+                                          <EditorField
+                                            value={element.config.noText || 'No'}
+                                            onChange={(value) =>
+                                              updateElement(step.id, element.id, {
+                                                config: { ...element.config, noText: value },
+                                              })
+                                            }
+                                            placeholder="No"
+                                            className="w-full"
+                                          />
+                                        </div>
+                                      </div>
                                     )}
 
                                     {(element.type === 'simple_cards' || element.type === 'checkboxes' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards') && (
@@ -1172,6 +1420,19 @@ export default function TemplateEditor({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Fixed Footer */}
+      <div className="fixed bottom-0 left-80 right-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end shadow-lg z-30">
+        <Tooltip content="No changes to save" disabled={hasChanges}>
+          <PrimaryButton 
+            onClick={handleSave} 
+            disabled={!hasChanges}
+          >
+            <Save size={18} />
+            Save
+          </PrimaryButton>
+        </Tooltip>
       </div>
     </div>
   );

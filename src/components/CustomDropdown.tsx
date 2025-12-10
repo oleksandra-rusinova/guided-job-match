@@ -50,8 +50,18 @@ export default function CustomDropdown({
     borderColor = '#E5E7EB'; // gray-200
   }
 
+  // Placeholder color is always consistent regardless of label state
   const placeholderColor = disabled ? '#9CA3AF' : '#64748B'; // gray-400 : slate-500
   const textColor = disabled ? '#9CA3AF' : '#3F3F46'; // gray-400 : zinc-700
+  
+  // Placeholder typography - always consistent
+  const placeholderTypography = {
+    fontSize: 16,
+    fontFamily: 'Poppins',
+    fontWeight: 400,
+    lineHeight: '24px',
+    letterSpacing: 0.2,
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -189,11 +199,7 @@ export default function CustomDropdown({
             <span
               style={{
                 color: placeholderColor,
-                fontSize: 16,
-                fontFamily: 'Poppins',
-                fontWeight: 100,
-                lineHeight: '24px',
-                letterSpacing: 0.2,
+                ...placeholderTypography,
               }}
             >
               {placeholder}
@@ -203,11 +209,7 @@ export default function CustomDropdown({
             <span
               style={{
                 color: selectedOptions.length > 0 ? textColor : placeholderColor,
-                fontSize: 16,
-                fontFamily: 'Poppins',
-                fontWeight: 100,
-                lineHeight: '24px',
-                letterSpacing: 0.2,
+                ...placeholderTypography,
               }}
             >
               {selectedOptions.length > 0 
