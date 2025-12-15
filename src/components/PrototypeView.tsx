@@ -2,6 +2,36 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Trash2, Plus, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
 import { useLoading } from '../contexts/LoadingContext';
+import { useModal } from '../contexts/ModalContext';
+
+function ArcSpinner({ size = 48, color = '#6633FF' }: { size?: number; color?: string }) {
+  const strokeWidth = size * 0.15;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const arcLength = circumference * 0.75; // 75% of the circle for the arc
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      className="animate-spin"
+      style={{ animation: 'spin 1s linear infinite' }}
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeDasharray={arcLength}
+        strokeDashoffset={arcLength * 0.25}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </svg>
+  );
+}
 
 type OptionType = NonNullable<Element['config']['options']>[number];
 import { updatePrototype } from '../utils/storage';
@@ -49,6 +79,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
 
   // Use Realtime hook to get prototype and listen for changes
   const { prototype, isConnected, presenceUsers, setEditing, updatePrototypeInState, isLoading } = useRealtimePrototype(prototypeId, userId, userName, initialPrototype);
+  const { confirm } = useModal();
   
   console.log('PrototypeView state:', { isLoading, prototype: prototype ? 'exists' : 'null', prototypeId });
   
@@ -63,6 +94,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
   const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
   const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
+  const [dropTargetElementId, setDropTargetElementId] = useState<string | null>(null);
+  const [dropTargetElementPosition, setDropTargetElementPosition] = useState<'above' | 'below' | null>(null);
   const [showRefineSelectionModal, setShowRefineSelectionModal] = useState(false);
   const [isManualSaving, setIsManualSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -221,7 +254,9 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <div className="mx-auto mb-4 flex justify-center">
+            <ArcSpinner size={48} />
+          </div>
           <p className="text-gray-600">Loading prototype...</p>
         </div>
       </div>
@@ -350,14 +385,19 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     }
   }, [newlyAddedElementId, isEditorOpen]);
 
-  const deleteElement = (stepId: string, elementId: string) => {
-    setStepsState(prev =>
-      prev.map(step =>
-        step.id === stepId
-          ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
-          : step
-      )
-    );
+  const deleteElement = async (stepId: string, elementId: string) => {
+    const confirmed = await confirm({
+      message: 'Are you sure you want to delete this element?',
+    });
+    if (confirmed) {
+      setStepsState(prev =>
+        prev.map(step =>
+          step.id === stepId
+            ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
+            : step
+        )
+      );
+    }
   };
 
   const handleElementDragStart = (e: React.DragEvent, stepId: string, elementId: string) => {
@@ -366,13 +406,28 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleElementDragOver = (e: React.DragEvent) => {
+  const handleElementDragOver = (e: React.DragEvent, elementId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    
+    if (!draggedElementId || draggedElementId === elementId) {
+      setDropTargetElementId(null);
+      setDropTargetElementPosition(null);
+      return;
+    }
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseY = e.clientY;
+    const elementCenterY = rect.top + rect.height / 2;
+    
+    setDropTargetElementId(elementId);
+    setDropTargetElementPosition(mouseY < elementCenterY ? 'above' : 'below');
   };
 
   const handleElementDrop = (e: React.DragEvent, stepId: string, targetElementId: string) => {
     e.preventDefault();
+    setDropTargetElementId(null);
+    setDropTargetElementPosition(null);
     if (!draggedElementId || !draggedElementStepId || draggedElementId === targetElementId || draggedElementStepId !== stepId) return;
 
     const step = stepsState.find(s => s.id === stepId);
@@ -395,6 +450,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   const handleElementDragEnd = () => {
     setDraggedElementId(null);
     setDraggedElementStepId(null);
+    setDropTargetElementId(null);
+    setDropTargetElementPosition(null);
   };
 
   const getDefaultElementConfig = (type: ElementType) => {
@@ -793,7 +850,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
-              // In split screen mode, always use 2 columns
+              // In split screen mode, use 2 columns per row
               let gridCols = 'grid-cols-1';
               if (isSplitScreen) {
                 gridCols = 'grid-cols-2';
@@ -836,25 +893,33 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 }
               };
               
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode
-              const isFirstElement = index === 0;
-              const cardPadding = (!isSplitScreen && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              const containerStyle = isSplitScreen 
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                : hasMultipleFields 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Use wider wrapper for 3 cards to maintain proper card width
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : numCards === 3
+                  ? { width: '1152px', margin: '0 auto', padding: '0' }
+                  : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                  <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: OptionType) => (
-                      <SimpleCard
-                        key={opt.id}
-                        title={opt.title || 'Option'}
-                        selected={isCardSelected(opt.id)}
-                        onSelect={() => handleCardSelect(opt.id)}
-                        primaryColor={prototype.primaryColor}
-                      />
-                    ))}
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    <div className={`grid ${gridCols} gap-[24px]`}>
+                      {options.map((opt: OptionType) => (
+                        <SimpleCard
+                          key={opt.id}
+                          title={opt.title || 'Option'}
+                          selected={isCardSelected(opt.id)}
+                          onSelect={() => handleCardSelect(opt.id)}
+                          primaryColor={prototype.primaryColor}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               );
@@ -868,14 +933,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
-              // In split screen mode, always use 2 columns
+              // In split screen mode, use 2 columns per row
               let gridCols = 'grid-cols-1';
               if (isSplitScreen) {
                 gridCols = 'grid-cols-2';
-              } else if (numCards === 2 || numCards === 3) {
-                gridCols = `grid-cols-${numCards}`;
-              } else if (numCards === 4) {
+              } else if (numCards === 2 || numCards === 4) {
                 gridCols = 'grid-cols-2';
+              } else if (numCards === 3) {
+                gridCols = 'grid-cols-3';
               } else if (numCards >= 5) {
                 gridCols = 'grid-cols-3';
               }
@@ -911,28 +976,36 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 }
               };
               
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode
-              const isFirstElement = index === 0;
-              const cardPadding = (!isSplitScreen && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              const containerStyle = isSplitScreen 
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                : hasMultipleFields 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : (numCards === 2 || numCards === 3 || numCards === 4)
+                  ? { width: '1152px', margin: '0 auto', padding: '0' }
+                  : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                  <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: OptionType) => (
-                      <ImageCard
-                        key={opt.id}
-                        id={opt.id}
-                        title={opt.title || 'Option'}
-                        description={opt.description}
-                        imageUrl={opt.imageUrl || ''}
-                        selected={isCardSelected(opt.id)}
-                        onSelect={() => handleCardSelect(opt.id)}
-                        primaryColor={prototype.primaryColor}
-                      />
-                    ))}
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    <div className={`grid ${gridCols} gap-[24px]`}>
+                      {options.map((opt: OptionType) => (
+                        <ImageCard
+                          key={opt.id}
+                          id={opt.id}
+                          title={opt.title || 'Option'}
+                          description={opt.description}
+                          imageUrl={opt.imageUrl || ''}
+                          selected={isCardSelected(opt.id)}
+                          onSelect={() => handleCardSelect(opt.id)}
+                          primaryColor={prototype.primaryColor}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               );
@@ -1051,14 +1124,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
-              // In split screen mode, always use 2 columns
+              // In split screen mode, use 2 columns per row
               let gridCols = 'grid-cols-1';
               if (isSplitScreen) {
                 gridCols = 'grid-cols-2';
-              } else if (numCards === 2 || numCards === 3) {
-                gridCols = `grid-cols-${numCards}`;
-              } else if (numCards === 4) {
+              } else if (numCards === 2 || numCards === 4) {
                 gridCols = 'grid-cols-2';
+              } else if (numCards === 3) {
+                gridCols = 'grid-cols-3';
               } else if (numCards >= 5) {
                 gridCols = 'grid-cols-3';
               }
@@ -1094,31 +1167,39 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 }
               };
               
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode
-              const isFirstElement = index === 0;
-              const cardPadding = (!isSplitScreen && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              const containerStyle = isSplitScreen 
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                : hasMultipleFields 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : (numCards === 2 || numCards === 3 || numCards === 4)
+                  ? { width: '1152px', margin: '0 auto', padding: '0' }
+                  : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                  <div className={`grid ${gridCols} gap-[24px]`}>
-                    {options.map((opt: OptionType) => (
-                      <AdvancedCard
-                        key={opt.id}
-                        id={opt.id}
-                        heading={opt.heading || 'Heading'}
-                        mainText={opt.mainText}
-                        linkSupportingText={opt.linkSupportingText}
-                        linkEnabled={opt.linkEnabled || false}
-                        linkUrl={opt.linkUrl}
-                        linkText={opt.linkText || 'Learn more'}
-                        selected={isCardSelected(opt.id)}
-                        onSelect={() => handleCardSelect(opt.id)}
-                        primaryColor={prototype.primaryColor}
-                      />
-                    ))}
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    <div className={`grid ${gridCols} gap-[24px]`}>
+                      {options.map((opt: OptionType) => (
+                        <AdvancedCard
+                          key={opt.id}
+                          id={opt.id}
+                          heading={opt.heading || 'Heading'}
+                          mainText={opt.mainText}
+                          linkSupportingText={opt.linkSupportingText}
+                          linkEnabled={opt.linkEnabled || false}
+                          linkUrl={opt.linkUrl}
+                          linkText={opt.linkText || 'Learn more'}
+                          selected={isCardSelected(opt.id)}
+                          onSelect={() => handleCardSelect(opt.id)}
+                          primaryColor={prototype.primaryColor}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               );
@@ -1132,14 +1213,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
-              // In split screen mode, always use 2 columns
+              // In split screen mode, use 2 columns per row
               let gridCols = 'grid-cols-1';
               if (isSplitScreen) {
                 gridCols = 'grid-cols-2';
-              } else if (numCards === 2 || numCards === 3) {
-                gridCols = `grid-cols-${numCards}`;
-              } else if (numCards === 4) {
+              } else if (numCards === 2 || numCards === 4) {
                 gridCols = 'grid-cols-2';
+              } else if (numCards === 3) {
+                gridCols = 'grid-cols-3';
               } else if (numCards >= 5) {
                 gridCols = 'grid-cols-3';
               }
@@ -1175,27 +1256,35 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 }
               };
               
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode
-              const isFirstElement = index === 0;
-              const cardPadding = (!isSplitScreen && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              const containerStyle = isSplitScreen 
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                : hasMultipleFields 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : (numCards === 2 || numCards === 3 || numCards === 4)
+                  ? { width: '1152px', margin: '0 auto', padding: '0' }
+                  : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                  <div className={`grid ${gridCols}`} style={{ gap: '24px' }}>
-                    {options.map((opt: OptionType) => (
-                      <ImageOnlyCard
-                        key={opt.id}
-                        id={opt.id}
-                        imageUrl={opt.imageUrl || ''}
-                        selected={isCardSelected(opt.id)}
-                        onSelect={() => handleCardSelect(opt.id)}
-                        primaryColor={prototype.primaryColor}
-                        totalCards={numCards}
-                      />
-                    ))}
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    <div className={`grid ${gridCols}`} style={{ gap: '24px' }}>
+                      {options.map((opt: OptionType) => (
+                        <ImageOnlyCard
+                          key={opt.id}
+                          id={opt.id}
+                          imageUrl={opt.imageUrl || ''}
+                          selected={isCardSelected(opt.id)}
+                          onSelect={() => handleCardSelect(opt.id)}
+                          primaryColor={prototype.primaryColor}
+                          totalCards={numCards}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               );
@@ -1214,47 +1303,53 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 setFieldValues(v => ({ ...v, [el.id]: selectedValue }));
               };
               
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode
-              const isFirstElement = index === 0;
-              const numCards = 2; // Yes/No cards always have 2 cards
-              const cardPadding = (!isSplitScreen && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              const containerStyle = isSplitScreen 
+                ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                : hasMultipleFields 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
               
-              // In split screen mode, use grid layout with 2 columns and 24px gap
+              // In split screen mode, use 2 columns per row
               if (isSplitScreen) {
                 return (
-                  <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                    <div className="grid grid-cols-2 gap-[24px]">
-                      <YesNoCard
-                        text={yesText}
-                        selected={selected === 'yes'}
-                        onSelect={() => handleSelect('yes')}
-                        primaryColor={prototype.primaryColor}
-                        className="w-full"
-                      />
-                      <YesNoCard
-                        text={noText}
-                        selected={selected === 'no'}
-                        onSelect={() => handleSelect('no')}
-                        primaryColor={prototype.primaryColor}
-                        className="w-full"
-                      />
+                  <div key={el.id} style={containerStyle}>
+                    <div style={wrapperStyle}>
+                      <div className="grid grid-cols-2 gap-[24px]">
+                        <YesNoCard
+                          text={yesText}
+                          selected={selected === 'yes'}
+                          onSelect={() => handleSelect('yes')}
+                          primaryColor={prototype.primaryColor}
+                          className="w-full"
+                        />
+                        <YesNoCard
+                          text={noText}
+                          selected={selected === 'no'}
+                          onSelect={() => handleSelect('no')}
+                          primaryColor={prototype.primaryColor}
+                          className="w-full"
+                        />
+                      </div>
                     </div>
                   </div>
                 );
               }
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding }}>
-                  <YesNoCards
-                    yesText={yesText}
-                    noText={noText}
-                    selected={selected}
-                    onSelect={handleSelect}
-                    primaryColor={prototype.primaryColor}
-                  />
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    <YesNoCards
+                      yesText={yesText}
+                      noText={noText}
+                      selected={selected}
+                      onSelect={handleSelect}
+                      primaryColor={prototype.primaryColor}
+                    />
+                  </div>
                 </div>
               );
             }
@@ -1264,7 +1359,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               const numCards = options.length;
               
               // Determine grid columns based on number of cards
-              // In split screen mode, always use 2 columns
+              // In split screen mode, use 2 columns per row
               // For more than 3 cards: always use 3 columns per row
               let gridCols = 'grid-cols-1';
               if (isSplitScreen) {
@@ -1274,13 +1369,6 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               } else if (numCards > 3) {
                 gridCols = 'grid-cols-3';
               }
-              
-              // Apply padding based on number of cards: 1-3 cards = 120px padding only if first element, 4+ cards = 0 padding
-              // Skip padding in split screen mode or for application steps (they use header marginBottom instead)
-              const isFirstElement = index === 0;
-              const cardPadding = (!isSplitScreen && !currentStep.isApplicationStep && numCards >= 1 && numCards <= 3 && isFirstElement) 
-                ? { paddingTop: '120px', paddingBottom: '0px' } 
-                : {};
               
               // For application steps, add 32px spacing between text fields and application cards
               // Check if previous element is a text_field and this is an application step
@@ -1293,55 +1381,70 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 ? { marginTop: '-112px' } // Offset to achieve 32px total spacing (120 + 24 - 112 = 32)
                 : {};
               
+              // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              // For application steps, use special spacing logic
+              const containerStyle = currentStep.isApplicationStep 
+                ? { ...baseGapStyle, ...spacingOverride, padding: '0', marginBottom: '0', display: 'block' }
+                : isSplitScreen 
+                  ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
+                  : hasMultipleFields 
+                    ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
+                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              const wrapperStyle = isSplitScreen 
+                ? { width: '100%', margin: '0', padding: '0' } 
+                : { width: '680px', margin: '0 auto', padding: '0' };
+              
               // Use flexbox with fixed width for 1 or 2 cards, grid for others
               // In split screen mode, always use grid with 2 columns
               const useFixedWidth = !isSplitScreen && (numCards === 1 || numCards === 2);
               
               return (
-                <div key={el.id} className="w-full" style={{ ...baseGapStyle, ...cardPadding, ...spacingOverride }}>
-                  {useFixedWidth ? (
-                    <div className="flex justify-center" style={{ gap: '24px' }}>
-                      {options.map((opt: OptionType) => (
-                        <div key={opt.id} style={{ width: '368px' }}>
-                          <ApplicationCard
-                            id={opt.id}
-                            title={opt.title || 'Application'}
-                            description={opt.description}
-                            imageUrl={opt.imageUrl}
-                            primaryColor={prototype.primaryColor}
-                            jobTitle={opt.jobTitle}
-                            location={opt.location}
-                            department={opt.department}
-                            jobType={opt.jobType}
-                            jobId={opt.jobId}
-                            jobDescription={opt.jobDescription}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                  <div className={`grid ${gridCols} justify-center`} style={{ gap: '24px' }}>
-                    {options.map((opt: OptionType) => (
-                      <div key={opt.id} style={numCards > 3 && !isSplitScreen ? { width: '368px' } : {}}>
-                        <ApplicationCard
-                          id={opt.id}
-                          title={opt.title || 'Application'}
-                          description={opt.description}
-                          imageUrl={opt.imageUrl}
-                          primaryColor={prototype.primaryColor}
-                          jobTitle={opt.jobTitle}
-                          location={opt.location}
-                          department={opt.department}
-                          jobType={opt.jobType}
-                          jobId={opt.jobId}
-                          jobDescription={opt.jobDescription}
-                          primaryButtonLink={opt.primaryButtonLink}
-                          learnMoreButtonLink={opt.learnMoreButtonLink}
-                        />
+                <div key={el.id} style={containerStyle}>
+                  <div style={wrapperStyle}>
+                    {useFixedWidth ? (
+                      <div className="flex justify-center" style={{ gap: '24px' }}>
+                        {options.map((opt: OptionType) => (
+                          <div key={opt.id} style={{ width: '368px' }}>
+                            <ApplicationCard
+                              id={opt.id}
+                              title={opt.title || 'Application'}
+                              description={opt.description}
+                              imageUrl={opt.imageUrl}
+                              primaryColor={prototype.primaryColor}
+                              jobTitle={opt.jobTitle}
+                              location={opt.location}
+                              department={opt.department}
+                              jobType={opt.jobType}
+                              jobId={opt.jobId}
+                              jobDescription={opt.jobDescription}
+                            />
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : (
+                      <div className={`grid ${gridCols} justify-center`} style={{ gap: '24px' }}>
+                        {options.map((opt: OptionType) => (
+                          <div key={opt.id} style={numCards > 3 && !isSplitScreen ? { width: '368px' } : {}}>
+                            <ApplicationCard
+                              id={opt.id}
+                              title={opt.title || 'Application'}
+                              description={opt.description}
+                              imageUrl={opt.imageUrl}
+                              primaryColor={prototype.primaryColor}
+                              jobTitle={opt.jobTitle}
+                              location={opt.location}
+                              department={opt.department}
+                              jobType={opt.jobType}
+                              jobId={opt.jobId}
+                              jobDescription={opt.jobDescription}
+                              primaryButtonLink={opt.primaryButtonLink}
+                              learnMoreButtonLink={opt.learnMoreButtonLink}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  )}
                 </div>
               );
             }
@@ -1706,20 +1809,30 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                           const isDragging = draggedElementId === el.id;
                           
                           return (
-                            <div 
-                              key={el.id} 
-                              id={`element-editor-${el.id}`} 
-                              className={`mb-4 border border-gray-200 rounded-lg bg-gray-100 transition-colors ${
-                                isDragging ? 'opacity-50' : ''
-                              }`}
-                              draggable={false}
-                              onDragStart={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onDragOver={canDrag ? handleElementDragOver : undefined}
-                              onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
-                            >
+                            <React.Fragment key={el.id}>
+                              {/* Drop indicator line above */}
+                              {dropTargetElementId === el.id && dropTargetElementPosition === 'above' && draggedElementId && draggedElementId !== el.id && draggedElementStepId === currentStep.id && (
+                                <div 
+                                  className="h-0.5 my-1 transition-all mb-4 pointer-events-none"
+                                  style={{ backgroundColor: '#4D3EE0' }}
+                                />
+                              )}
+                              <div 
+                                id={`element-editor-${el.id}`} 
+                                className={`mb-4 border border-gray-200 rounded-lg bg-gray-100 transition-all ${
+                                  isDragging 
+                                    ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
+                                    : ''
+                                }`}
+                                style={isDragging ? { borderRadius: '0.5rem' } : {}}
+                                draggable={false}
+                                onDragStart={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onDragOver={canDrag ? (e) => handleElementDragOver(e, el.id) : undefined}
+                                onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
+                              >
                               <div className="flex items-center justify-between p-3 border-b border-gray-200">
                                 <div className="flex items-center gap-2">
                                   {canDrag && (
@@ -1747,9 +1860,9 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                                   </span>
                                 </div>
                                 <button
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    deleteElement(currentStep.id, el.id);
+                                    await deleteElement(currentStep.id, el.id);
                                   }}
                                   className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                                   title="Delete element"
@@ -1768,6 +1881,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                                 />
                               </div>
                             </div>
+                              {/* Drop indicator line below */}
+                              {dropTargetElementId === el.id && dropTargetElementPosition === 'below' && draggedElementId && draggedElementId !== el.id && draggedElementStepId === currentStep.id && (
+                                <div 
+                                  className="h-0.5 my-1 transition-all mt-4 pointer-events-none"
+                                  style={{ backgroundColor: '#4D3EE0' }}
+                                />
+                              )}
+                            </React.Fragment>
                           );
                         })}
                       </div>
@@ -1775,29 +1896,40 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     
                     {/* Other Elements */}
                     {otherElements.map((el) => {
-                      const isExpanded = expandedCardElements.has(el.id);
-                      const isCardType = el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards';
+                      // Checkboxes should always be expanded (not collapsible)
+                      const isExpanded = el.type === 'checkboxes' ? true : expandedCardElements.has(el.id);
+                      const isCardType = el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards' || el.type === 'checkboxes';
                       const canDrag = otherElements.length > 1;
                       const isDragging = draggedElementId === el.id;
                       
                       return (
-                  <div 
-                    key={el.id} 
-                    id={`element-editor-${el.id}`} 
-                    className={`border border-gray-200 rounded-lg bg-gray-100 transition-colors ${
-                      isDragging ? 'opacity-50' : ''
-                    }`}
-                    draggable={false}
-                    onDragStart={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDragOver={canDrag ? handleElementDragOver : undefined}
-                    onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
-                  >
+                        <React.Fragment key={el.id}>
+                          {/* Drop indicator line above */}
+                          {dropTargetElementId === el.id && dropTargetElementPosition === 'above' && draggedElementId && draggedElementId !== el.id && draggedElementStepId === currentStep.id && (
+                            <div 
+                              className="h-0.5 my-1 transition-all pointer-events-none"
+                              style={{ backgroundColor: '#4D3EE0' }}
+                            />
+                          )}
+                          <div 
+                            id={`element-editor-${el.id}`} 
+                            className={`border border-gray-200 rounded-lg bg-gray-100 transition-all ${
+                              isDragging 
+                                ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
+                                : ''
+                            }`}
+                            style={isDragging ? { borderRadius: '0.5rem' } : {}}
+                            draggable={false}
+                            onDragStart={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onDragOver={canDrag ? (e) => handleElementDragOver(e, el.id) : undefined}
+                            onDrop={(e) => canDrag && handleElementDrop(e, currentStep.id, el.id)}
+                          >
                     <div 
-                      className={`flex items-center justify-between p-3 ${isCardType ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
-                      onClick={isCardType ? () => {
+                      className={`flex items-center justify-between p-3 ${isCardType && el.type !== 'checkboxes' ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
+                      onClick={isCardType && el.type !== 'checkboxes' ? () => {
                         const newSet = new Set(expandedCardElements);
                         if (isExpanded) {
                           newSet.delete(el.id);
@@ -1829,13 +1961,13 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                             />
                           </span>
                         )}
-                        {isCardType && (isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />)}
+                        {isCardType && el.type !== 'checkboxes' && (isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />)}
                     <span className="text-base font-medium" style={{ color: '#464F5E' }}>{getElementLabel(el.type)}</span>
                       </div>
                     <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          deleteElement(currentStep.id, el.id);
+                          await deleteElement(currentStep.id, el.id);
                         }}
                       className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                       title="Delete element"
@@ -1997,40 +2129,27 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       </div>
                     </div>
                   ) : null}
-                    </div>
-                    )}
 
-                  {el.type === 'dropdown' && (
-                    <div className="pt-1 px-3 pb-1 space-y-3">
-                      <CardEditor
-                        element={el}
-                        stepIndex={currentPage}
-                        onUpdateElement={(stepIndex, elementId, updates) => {
-                          updateElement(stepIndex, elementId, updates);
-                        }}
-                        primaryColor={prototype.primaryColor}
-                        showSelectionConfig={true}
-                      />
-                    </div>
-                  )}
-
-                  {(!isCardType || isExpanded) && (
-                    <div className="pt-1 px-3 pb-3 space-y-3">
-                  {(el.type === 'checkboxes' || el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
+                  {(el.type === 'simple_cards' || el.type === 'checkboxes' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards') && (
                     <CardEditor
                       element={el}
                       stepIndex={currentPage}
-                      onUpdateElement={(stepIndex, elementId, updates) => {
-                        updateElement(stepIndex, elementId, updates);
-                      }}
+                      onUpdateElement={updateElement}
                       primaryColor={prototype.primaryColor}
                       showSelectionConfig={el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards'}
-                      disableAddCard={false}
                     />
                   )}
-                </div>
+                    </div>
                     )}
-                  </div>
+                          </div>
+                          {/* Drop indicator line below */}
+                          {dropTargetElementId === el.id && dropTargetElementPosition === 'below' && draggedElementId && draggedElementId !== el.id && draggedElementStepId === currentStep.id && (
+                            <div 
+                              className="h-0.5 my-1 transition-all pointer-events-none"
+                              style={{ backgroundColor: '#4D3EE0' }}
+                            />
+                          )}
+                        </React.Fragment>
                 );
                     })}
                   </>
@@ -2050,7 +2169,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               >
                 {isManualSaving ? (
                   <div className="flex items-center justify-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <ArcSpinner size={16} color="white" />
                     <span>Saving...</span>
                   </div>
                 ) : (

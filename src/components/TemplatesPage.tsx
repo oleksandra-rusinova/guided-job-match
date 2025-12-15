@@ -19,6 +19,7 @@ import TemplateEditor from './TemplateEditor';
 import SystemMessageModal from './SystemMessageModal';
 import Tabs from './Tabs';
 import Tooltip from './Tooltip';
+import { useModal } from '../contexts/ModalContext';
 
 interface TemplatesPageProps {
   onBack: () => void;
@@ -31,6 +32,7 @@ export default function TemplatesPage({
   onEditQuestionTemplate: _onEditQuestionTemplate,
   onEditPrototypeTemplate: _onEditPrototypeTemplate,
 }: TemplatesPageProps) {
+  const { confirm } = useModal();
   const [questionTemplates, setQuestionTemplates] = useState<QuestionTemplate[]>([]);
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
   const [applicationStepTemplates, setApplicationStepTemplates] = useState<ApplicationStepTemplate[]>([]);
@@ -132,7 +134,10 @@ export default function TemplatesPage({
       ? 'Are you sure you want to delete this prototype template?'
       : 'Are you sure you want to delete this application template?';
     
-    if (confirm(confirmMessage)) {
+    const confirmed = await confirm({
+      message: confirmMessage,
+    });
+    if (confirmed) {
       try {
         if (type === 'question') {
           await deleteQuestionTemplate(id);
@@ -349,7 +354,10 @@ export default function TemplatesPage({
       ? 'Are you sure you want to delete ALL prototype templates? This cannot be undone.'
       : 'Are you sure you want to delete ALL application templates? This cannot be undone.';
     
-    if (confirm(confirmMessage)) {
+    const confirmed = await confirm({
+      message: confirmMessage,
+    });
+    if (confirmed) {
       try {
         if (type === 'question') {
           await saveAllToStore('questionTemplates', []);
@@ -442,7 +450,7 @@ export default function TemplatesPage({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search templates..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500"
                 style={{ color: '#464F5E' }}
               />
             </div>
@@ -535,9 +543,10 @@ export default function TemplatesPage({
               steps={getTemplateSteps()}
               onSave={handleSaveTemplate}
               onCancel={() => setSelectedTemplate(null)}
-              primaryColor="#4D3EE0"
+              primaryColor={selectedTemplate.type === 'prototype' ? (selectedTemplate.template as PrototypeTemplate).prototype.primaryColor : "#4D3EE0"}
               isQuestionTemplate={selectedTemplate.type === 'question'}
               isApplicationStepTemplate={selectedTemplate.type === 'applicationStep'}
+              logoUrl={selectedTemplate.type === 'prototype' ? (selectedTemplate.template as PrototypeTemplate).prototype.logoUrl : undefined}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-white">

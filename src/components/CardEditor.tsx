@@ -1,6 +1,7 @@
-import { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Element } from '../types';
+import { useModal } from '../contexts/ModalContext';
 
 type OptionType = NonNullable<Element['config']['options']>[number];
 import SelectionConfiguration from './SelectionConfiguration';
@@ -29,11 +30,15 @@ export default function CardEditor({
   disableAddCard = false
 }: CardEditorProps) {
   const dragCardIdRef = useRef<string | null>(null);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dropTargetCardId, setDropTargetCardId] = useState<string | null>(null);
+  const [dropTargetCardPosition, setDropTargetCardPosition] = useState<'above' | 'below' | null>(null);
   const [newlyAddedCardOptionId, setNewlyAddedCardOptionId] = useState<string | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const autoExpandedElementIdsRef = useRef<Set<string>>(new Set());
   // Track latest element config to avoid stale closures in SelectionConfiguration callbacks
   const elementConfigRef = useRef(element.config);
+  const { confirm } = useModal();
   
   // Update ref whenever element changes
   useEffect(() => {
@@ -93,13 +98,19 @@ export default function CardEditor({
     onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
   };
 
-  const deleteCardOption = (optionId: string) => {
-    const options = (element.config.options || []).filter((opt: OptionType) => opt.id !== optionId);
-    onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
+  const deleteCardOption = async (optionId: string) => {
+    const confirmed = await confirm({
+      message: 'Are you sure you want to delete this card option?',
+    });
+    if (confirmed) {
+      const options = (element.config.options || []).filter((opt: OptionType) => opt.id !== optionId);
+      onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, optionId: string) => {
     dragCardIdRef.current = optionId;
+    setDraggedCardId(optionId);
     try {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', optionId);
@@ -108,17 +119,32 @@ export default function CardEditor({
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, optionId: string) => {
     e.preventDefault();
     try { 
       e.dataTransfer.dropEffect = 'move'; 
     } catch {
       // Ignore errors
     }
+    
+    if (!dragCardIdRef.current || dragCardIdRef.current === optionId) {
+      setDropTargetCardId(null);
+      setDropTargetCardPosition(null);
+      return;
+    }
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseY = e.clientY;
+    const elementCenterY = rect.top + rect.height / 2;
+    
+    setDropTargetCardId(optionId);
+    setDropTargetCardPosition(mouseY < elementCenterY ? 'above' : 'below');
   };
 
   const handleDrop = (e: React.DragEvent, targetOptionId: string) => {
     e.preventDefault();
+    setDropTargetCardId(null);
+    setDropTargetCardPosition(null);
     const draggedId = dragCardIdRef.current || e.dataTransfer.getData('text/plain');
     const options = [...(element.config.options || [])];
     const fromIndex = options.findIndex((o: OptionType) => o.id === draggedId);
@@ -134,6 +160,9 @@ export default function CardEditor({
 
   const handleDragEnd = () => {
     dragCardIdRef.current = null;
+    setDraggedCardId(null);
+    setDropTargetCardId(null);
+    setDropTargetCardPosition(null);
   };
 
   const updateOptionTitle = (optionId: string, title: string) => {
@@ -321,18 +350,32 @@ export default function CardEditor({
           {options.map((opt: OptionType, idx: number) => {
             const canDrag = options.length > 1;
             return (
-        <div
-          key={opt.id}
-          id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
-          className={`border border-gray-200 rounded-lg p-3 space-y-3 ${element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'}`}
-          draggable={false}
-          onDragStart={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onDragOver={canDrag ? handleDragOver : undefined}
-          onDrop={canDrag ? (e) => handleDrop(e, opt.id) : undefined}
-        >
+              <React.Fragment key={opt.id}>
+                {/* Drop indicator line above */}
+                {dropTargetCardId === opt.id && dropTargetCardPosition === 'above' && draggedCardId && draggedCardId !== opt.id && (
+                  <div 
+                    className="h-0.5 my-1 transition-all pointer-events-none"
+                    style={{ backgroundColor: '#4D3EE0' }}
+                  />
+                )}
+                <div
+                  id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
+                  className={`border border-gray-200 rounded-lg p-3 space-y-3 transition-all ${
+                    element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'
+                  } ${
+                    draggedCardId === opt.id 
+                      ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
+                      : ''
+                  }`}
+                  style={draggedCardId === opt.id ? { borderRadius: '0.5rem' } : {}}
+                  draggable={false}
+                  onDragStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDragOver={canDrag ? (e) => handleDragOver(e, opt.id) : undefined}
+                  onDrop={canDrag ? (e) => handleDrop(e, opt.id) : undefined}
+                >
           <div className="flex items-center gap-2">
             {canDrag && (
               <span
@@ -389,7 +432,7 @@ export default function CardEditor({
               </button>
             )}
             <button
-              onClick={() => deleteCardOption(opt.id)}
+              onClick={async () => await deleteCardOption(opt.id)}
               className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
               <Trash2 size={16} />
@@ -687,6 +730,14 @@ export default function CardEditor({
             </div>
           )}
         </div>
+                {/* Drop indicator line below */}
+                {dropTargetCardId === opt.id && dropTargetCardPosition === 'below' && draggedCardId && draggedCardId !== opt.id && (
+                  <div 
+                    className="h-0.5 my-1 transition-all pointer-events-none"
+                    style={{ backgroundColor: '#4D3EE0' }}
+                  />
+                )}
+              </React.Fragment>
             );
           })}
 
@@ -727,7 +778,7 @@ export default function CardEditor({
       )}
 
       {/* Selection Configuration */}
-      {showSelectionConfig && element.config.selectionType === 'multiple' && (() => {
+      {showSelectionConfig && (() => {
         const maxOptions = element.config.options?.length || 10;
         // For dropdowns, pass the actual maxSelection value - SelectionConfiguration will handle the logic
         const maxSelection = element.config.maxSelection;

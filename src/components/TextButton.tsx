@@ -223,7 +223,10 @@ export default function TextButton({
         {children}
       </button>
       {isFocused && !disabled && isKeyboardFocus && (
-        <div className={`${focusRingClasses[size]} outline-primary-500`} />
+        <div 
+          className={focusRingClasses[size]}
+          style={{ outlineColor: primaryColor || '#4D3EE0' }}
+        />
       )}
     </div>
   );

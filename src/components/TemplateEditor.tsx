@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, Save, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Step, Element, ElementType } from '../types';
 import { ELEMENT_TYPES, getElementLabel } from '../utils/elementTypes';
+import { useModal } from '../contexts/ModalContext';
 import SystemField from './SystemField';
 import ShowLabelToggle from './ShowLabelToggle';
 import CardEditor from './CardEditor';
@@ -12,6 +13,7 @@ import TabControl from './TabControl';
 import FileUploader from './FileUploader';
 import EditorField from './EditorField';
 import Tooltip from './Tooltip';
+import TemplatePreview from './TemplatePreview';
 
 interface TemplateEditorProps {
   templateName: string;
@@ -21,6 +23,7 @@ interface TemplateEditorProps {
   primaryColor?: string;
   isQuestionTemplate?: boolean;
   isApplicationStepTemplate?: boolean;
+  logoUrl?: string;
 }
 
 export default function TemplateEditor({
@@ -31,6 +34,7 @@ export default function TemplateEditor({
   primaryColor = '#4D3EE0',
   isQuestionTemplate = false,
   isApplicationStepTemplate = false,
+  logoUrl,
 }: TemplateEditorProps) {
   const [name, setName] = useState(initialName);
   const [steps, setSteps] = useState<Step[]>(initialSteps);
@@ -39,8 +43,12 @@ export default function TemplateEditor({
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
   const [newlyAddedStepId, setNewlyAddedStepId] = useState<string | null>(null);
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [dropTargetStepId, setDropTargetStepId] = useState<string | null>(null);
+  const [dropTargetStepPosition, setDropTargetStepPosition] = useState<'above' | 'below' | null>(null);
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const savedStateRef = useRef<{ name: string; steps: Step[] }>({ name: initialName, steps: initialSteps });
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const { confirm } = useModal();
 
   useEffect(() => {
     setName(initialName);
@@ -177,10 +185,15 @@ export default function TemplateEditor({
     setSteps(steps.map(step => step.id === stepId ? { ...step, ...updates } : step));
   };
 
-  const deleteStep = (stepId: string) => {
-    setSteps(steps.filter(step => step.id !== stepId));
-    if (expandedStepId === stepId) {
-      setExpandedStepId(null);
+  const deleteStep = async (stepId: string) => {
+    const confirmed = await confirm({
+      message: 'Are you sure you want to delete this step?',
+    });
+    if (confirmed) {
+      setSteps(steps.filter(step => step.id !== stepId));
+      if (expandedStepId === stepId) {
+        setExpandedStepId(null);
+      }
     }
   };
 
@@ -189,30 +202,88 @@ export default function TemplateEditor({
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleStepDragOver = (e: React.DragEvent) => {
+  const handleStepDragOver = (e: React.DragEvent, stepId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    
+    if (!draggedStepId || draggedStepId === stepId) {
+      setDropTargetStepId(null);
+      setDropTargetStepPosition(null);
+      return;
+    }
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseY = e.clientY;
+    const elementCenterY = rect.top + rect.height / 2;
+    
+    setDropTargetStepId(stepId);
+    setDropTargetStepPosition(mouseY < elementCenterY ? 'above' : 'below');
   };
 
   const handleStepDrop = (e: React.DragEvent, targetStepId: string) => {
     e.preventDefault();
-    if (!draggedStepId || draggedStepId === targetStepId) return;
+    e.stopPropagation();
+    
+    if (!draggedStepId || draggedStepId === targetStepId) {
+      setDropTargetStepId(null);
+      setDropTargetStepPosition(null);
+      return;
+    }
 
     const draggedIndex = steps.findIndex(step => step.id === draggedStepId);
     const targetIndex = steps.findIndex(step => step.id === targetStepId);
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDropTargetStepId(null);
+      setDropTargetStepPosition(null);
+      return;
+    }
+
+    // If dropTargetStepPosition is not set, determine it from mouse position
+    let position = dropTargetStepPosition;
+    if (!position) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const mouseY = e.clientY;
+      const elementCenterY = rect.top + rect.height / 2;
+      position = mouseY < elementCenterY ? 'above' : 'below';
+    }
 
     const newSteps = [...steps];
     const [draggedStep] = newSteps.splice(draggedIndex, 1);
-    newSteps.splice(targetIndex, 0, draggedStep);
+    
+    // After removing the dragged item, recalculate the target index
+    // because indices shift when an item is removed before the target
+    let adjustedTargetIndex = targetIndex;
+    if (draggedIndex < targetIndex) {
+      // If we removed an item before the target, the target index decreases by 1
+      adjustedTargetIndex = targetIndex - 1;
+    }
+    
+    // Calculate the correct insertion index based on drop position
+    let insertIndex = adjustedTargetIndex;
+    if (position === 'below') {
+      // If dropping below, insert after the target
+      insertIndex = adjustedTargetIndex + 1;
+    } else if (position === 'above') {
+      // If dropping above, insert at the target position
+      insertIndex = adjustedTargetIndex;
+    }
+    
+    // Ensure insertIndex is within bounds
+    insertIndex = Math.max(0, Math.min(insertIndex, newSteps.length));
+    
+    newSteps.splice(insertIndex, 0, draggedStep);
 
     setSteps(newSteps);
     setDraggedStepId(null);
+    setDropTargetStepId(null);
+    setDropTargetStepPosition(null);
   };
 
   const handleStepDragEnd = () => {
     setDraggedStepId(null);
+    setDropTargetStepId(null);
+    setDropTargetStepPosition(null);
   };
 
   const CARD_ELEMENT_TYPES: ElementType[] = ['simple_cards', 'image_cards', 'advanced_cards', 'image_only_card', 'yes_no_cards'];
@@ -385,12 +456,17 @@ export default function TemplateEditor({
     }
   };
 
-  const deleteElement = (stepId: string, elementId: string) => {
-    setSteps(steps.map(step =>
-      step.id === stepId
-        ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
-        : step
-    ));
+  const deleteElement = async (stepId: string, elementId: string) => {
+    const confirmed = await confirm({
+      message: 'Are you sure you want to delete this element?',
+    });
+    if (confirmed) {
+      setSteps(steps.map(step =>
+        step.id === stepId
+          ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
+          : step
+      ));
+    }
   };
 
   const updateElement = (stepId: string, elementId: string, updates: Partial<Element>) => {
@@ -449,6 +525,16 @@ export default function TemplateEditor({
             {name}
           </h2>
         </div>
+        <div className="flex items-center gap-2">
+          <TabControl
+            options={[
+              { value: 'edit', label: 'Edit' },
+              { value: 'preview', label: 'Preview' }
+            ]}
+            value={activeTab}
+            onChange={(value) => setActiveTab(value as 'edit' | 'preview')}
+          />
+        </div>
       </div>
 
       {/* Scrollable Content */}
@@ -457,9 +543,19 @@ export default function TemplateEditor({
         className="flex-1 overflow-y-auto min-h-0"
         style={{ 
           paddingTop: '73px', // Space for fixed header
-          paddingBottom: '73px', // Space for fixed footer
+          paddingBottom: activeTab === 'edit' ? '73px' : '0', // Space for fixed footer (only in edit mode)
         }}
       >
+        {activeTab === 'preview' ? (
+          <TemplatePreview
+            steps={steps}
+            primaryColor={primaryColor}
+            isQuestionTemplate={isQuestionTemplate}
+            isApplicationStepTemplate={isApplicationStepTemplate}
+            templateName={name}
+            logoUrl={logoUrl}
+          />
+        ) : (
         <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
           {/* Steps */}
           <div>
@@ -621,7 +717,7 @@ export default function TemplateEditor({
                           return (
                             <>
                               {/* Application Cards Section (only for application steps) */}
-                              {isApplicationStepTemplate && (
+                              {isAppStep && (
                                 <div className="mb-6">
                                   <div className="flex justify-between items-center mb-4">
                                     <h4 className="text-base font-medium" style={{ color: '#464F5E' }}>
@@ -738,7 +834,7 @@ export default function TemplateEditor({
                                   </span>
                                   <div className="flex items-center gap-2">
                                     <button
-                                      onClick={() => deleteElement(step.id, element.id)}
+                                      onClick={async () => await deleteElement(step.id, element.id)}
                                       className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     >
                                       <Trash2 size={16} />
@@ -956,106 +1052,215 @@ export default function TemplateEditor({
                 </div>
 
                 <div className="space-y-2">
-                  {steps.map((step) => (
-                    <div
-                      key={step.id}
-                      id={`step-${step.id}`}
-                      className={`border rounded-lg transition-all border-gray-200 ${
-                        draggedStepId === step.id ? 'opacity-50' : ''
-                      }`}
-                      draggable={false}
-                      onDragStart={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDragOver={!isQuestionTemplate ? handleStepDragOver : undefined}
-                      onDrop={!isQuestionTemplate ? (e) => handleStepDrop(e, step.id) : undefined}
-                    >
-                      <div
-                        className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50"
-                        onClick={() => setExpandedStepId(expandedStepId === step.id ? null : step.id)}
-                      >
-                        <div className="flex items-center gap-3">
-                          {!isQuestionTemplate && (
-                            <span
-                              draggable={true}
-                              onDragStart={(e) => {
-                                e.stopPropagation();
-                                handleStepDragStart(e, step.id);
-                              }}
-                              onDragEnd={(e) => {
-                                e.stopPropagation();
-                                handleStepDragEnd();
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="inline-flex cursor-grab active:cursor-grabbing"
+                  {steps.map((step, index) => {
+                    // Check if this is an application step
+                    const isAppStep = step.isApplicationStep;
+                    const systemPrimaryColor = '#4D3EE0';
+                    
+                    // Helper function to add opacity to color
+                    const addOpacity = (color: string, opacity: number) => {
+                      const hex = color.replace('#', '');
+                      const r = parseInt(hex.substring(0, 2), 16);
+                      const g = parseInt(hex.substring(2, 4), 16);
+                      const b = parseInt(hex.substring(4, 6), 16);
+                      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+                    };
+
+                    // Helper function to darken color
+                    const darkenColor = (color: string, percent: number) => {
+                      const hex = color.replace('#', '');
+                      const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) * (1 - percent / 100)));
+                      const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) * (1 - percent / 100)));
+                      const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) * (1 - percent / 100)));
+                      return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+                    };
+
+                    return (
+                      <React.Fragment key={step.id}>
+                        {/* Drop indicator line above */}
+                        {dropTargetStepId === step.id && dropTargetStepPosition === 'above' && draggedStepId && draggedStepId !== step.id && (
+                          <div 
+                            className="h-0.5 my-1 transition-all pointer-events-none"
+                            style={{ backgroundColor: '#4D3EE0' }}
+                          />
+                        )}
+                        <div
+                          id={`step-${step.id}`}
+                          className={`${isAppStep ? 'border-2' : 'border'} rounded-lg transition-all ${
+                            draggedStepId === step.id 
+                              ? (isAppStep ? 'opacity-20 shadow-lg scale-105' : 'opacity-50 shadow-lg scale-105 border-blue-400')
+                              : ''
+                          }`}
+                          style={isAppStep ? {
+                            borderColor: draggedStepId === step.id 
+                              ? addOpacity(systemPrimaryColor, 0.4)
+                              : addOpacity(systemPrimaryColor, 0.1),
+                            backgroundColor: addOpacity(systemPrimaryColor, 0.06),
+                            borderRadius: draggedStepId === step.id ? '0.5rem' : undefined,
+                          } : {
+                            borderColor: draggedStepId === step.id ? '#60A5FA' : '#E5E7EB',
+                            borderRadius: draggedStepId === step.id ? '0.5rem' : undefined,
+                          }}
+                          draggable={false}
+                          onDragStart={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDragOver={!isQuestionTemplate ? (e) => handleStepDragOver(e, step.id) : undefined}
+                          onDrop={!isQuestionTemplate ? (e) => handleStepDrop(e, step.id) : undefined}
+                        >
+                        <div
+                          className={`p-4 flex justify-between items-center cursor-pointer transition-colors ${
+                            !isAppStep ? 'hover:bg-gray-50 rounded-t-lg' : 'rounded-t-lg'
+                          } ${
+                            expandedStepId !== step.id ? 'rounded-b-lg' : ''
+                          }`}
+                          style={isAppStep ? {
+                            backgroundColor: 'transparent',
+                          } : {}}
+                          onMouseEnter={isAppStep ? (e) => {
+                            e.currentTarget.style.backgroundColor = addOpacity(systemPrimaryColor, 0.08);
+                            const borderRadius = expandedStepId === step.id 
+                              ? '0.5rem 0.5rem 0 0' 
+                              : '0.5rem';
+                            e.currentTarget.style.borderRadius = borderRadius;
+                          } : undefined}
+                          onMouseLeave={isAppStep ? (e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                            const borderRadius = expandedStepId === step.id 
+                              ? '0.5rem 0.5rem 0 0' 
+                              : '0.5rem';
+                            e.currentTarget.style.borderRadius = borderRadius;
+                          } : undefined}
+                          onClick={() => setExpandedStepId(expandedStepId === step.id ? null : step.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            {!isQuestionTemplate && !isAppStep && (
+                              <span
+                                draggable={true}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  handleStepDragStart(e, step.id);
+                                }}
+                                onDragEnd={(e) => {
+                                  e.stopPropagation();
+                                  handleStepDragEnd();
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                className="inline-flex cursor-grab active:cursor-grabbing"
+                              >
+                                <GripVertical 
+                                  size={16} 
+                                  className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                />
+                              </span>
+                            )}
+                            {isAppStep && (
+                              <div 
+                                className="w-4 h-4 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: systemPrimaryColor }}
+                              >
+                                <span className="text-white text-xs font-bold">A</span>
+                              </div>
+                            )}
+                            <span 
+                              className="font-medium"
+                              style={{ color: isAppStep ? darkenColor(systemPrimaryColor, 20) : '#464F5E' }}
                             >
-                              <GripVertical 
-                                size={16} 
-                                className="text-gray-400 hover:text-gray-600 pointer-events-none" 
-                              />
+                              {step.name}
                             </span>
-                          )}
-                          <span className="font-medium" style={{ color: '#464F5E' }}>
-                            {step.name}
-                          </span>
-                          {step.question && expandedStepId !== step.id && (
+                            {isAppStep && step.applicationStepHeading && expandedStepId !== step.id && (
+                              <span 
+                                className="text-sm"
+                                style={{ color: darkenColor(systemPrimaryColor, 10) }}
+                              >
+                                - {step.applicationStepHeading}
+                              </span>
+                            )}
+                            {!isAppStep && step.question && expandedStepId !== step.id && (
+                              <>
+                                <span className="text-sm text-gray-500">- {step.question}</span>
+                                {step.elements && step.elements.length > 0 && (
+                                  <span className="px-2 py-0.5 text-xs font-normal rounded bg-gray-100 text-gray-700 font-['Poppins']">
+                                    {getElementLabel(step.elements[0].type)}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await deleteStep(step.id);
+                              }}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                            {expandedStepId === step.id ? (
+                              <ChevronUp size={20} className="text-gray-400" />
+                            ) : (
+                              <ChevronDown size={20} className="text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+
+                        {expandedStepId === step.id && (
+                          <div 
+                            className={`p-4 border-t space-y-4 ${isAppStep ? 'bg-white rounded-b-lg' : ''}`}
+                            style={isAppStep ? { borderColor: addOpacity(systemPrimaryColor, 0.2) } : {}}
+                          >
+                          {isAppStep ? (
                             <>
-                              <span className="text-sm text-gray-500">- {step.question}</span>
-                              {step.elements && step.elements.length > 0 && (
-                                <span className="px-2 py-0.5 text-xs font-normal rounded bg-gray-100 text-gray-700 font-['Poppins']">
-                                  {getElementLabel(step.elements[0].type)}
-                                </span>
-                              )}
+                              <SystemField
+                                type="text"
+                                value={step.applicationStepHeading || ''}
+                                onChange={(value) => updateStep(step.id, { applicationStepHeading: value })}
+                                label="Heading"
+                                placeholder="Enter heading"
+                              />
+
+                              <SystemField
+                                type="text"
+                                value={step.applicationStepSubheading || ''}
+                                onChange={(value) => updateStep(step.id, { applicationStepSubheading: value })}
+                                label="Subheading"
+                                placeholder="Enter subheading"
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <SystemField
+                                type="text"
+                                value={step.question}
+                                onChange={(value) => updateStep(step.id, { question: value })}
+                                label="Question"
+                                placeholder="Enter your question"
+                              />
+
+                              <SystemField
+                                type="text"
+                                value={step.description}
+                                onChange={(value) => updateStep(step.id, { description: value })}
+                                label="Description"
+                                placeholder="Enter description"
+                              />
                             </>
                           )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteStep(step.id);
-                            }}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                          {expandedStepId === step.id ? (
-                            <ChevronUp size={20} className="text-gray-400" />
-                          ) : (
-                            <ChevronDown size={20} className="text-gray-400" />
-                          )}
-                        </div>
-                      </div>
 
-                      {expandedStepId === step.id && (
-                        <div className="p-4 border-t border-gray-200 space-y-4">
-                          <SystemField
-                            type="text"
-                            value={step.question}
-                            onChange={(value) => updateStep(step.id, { question: value })}
-                            label="Question"
-                            placeholder="Enter your question"
-                          />
+                          {!isAppStep && (
+                            <>
+                              <div>
+                                <Checkbox
+                                  id={`split-${step.id}`}
+                                  checked={step.splitScreenWithImage}
+                                  onChange={(e) => updateStep(step.id, { splitScreenWithImage: e.target.checked })}
+                                  label="Split screen with image"
+                                />
+                              </div>
 
-                          <SystemField
-                            type="text"
-                            value={step.description}
-                            onChange={(value) => updateStep(step.id, { description: value })}
-                            label="Description"
-                            placeholder="Enter description"
-                          />
-
-                          <div>
-                            <Checkbox
-                              id={`split-${step.id}`}
-                              checked={step.splitScreenWithImage}
-                              onChange={(e) => updateStep(step.id, { splitScreenWithImage: e.target.checked })}
-                              label="Split screen with image"
-                            />
-                          </div>
-
-                          {step.splitScreenWithImage && (
+                              {step.splitScreenWithImage && (
                             <div className="space-y-4 pl-6 border-l-2 border-gray-200">
                               <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: '#464F5E' }}>
@@ -1142,62 +1347,124 @@ export default function TemplateEditor({
                                 </div>
                               )}
                             </div>
+                              )}
+                            </>
                           )}
 
                           <div className="pt-4">
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
-                                Elements
-                              </label>
-                              <div className="relative">
-                                <TextButton
-                                  onClick={() => setOpenElementMenuStepId(openElementMenuStepId === step.id ? null : step.id)}
-                                  size="sm"
-                                >
-                                  <Plus size={16} />
-                                  Add element
-                                </TextButton>
-                                {openElementMenuStepId === step.id && (
-                                  <>
-                                    <div
-                                      className="fixed inset-0 z-10"
-                                      onClick={() => setOpenElementMenuStepId(null)}
-                                    />
-                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                                      {ELEMENT_TYPES.map((type) => {
-                                        const isCardType = isCardElement(type.type);
-                                        const isDisabled = isCardType && hasCardElement(step.id);
-                                        
-                                        return (
-                                          <button
-                                            key={type.type}
-                                            onClick={() => {
-                                              if (!isDisabled) {
-                                                addElement(step.id, type.type);
-                                                setOpenElementMenuStepId(null);
-                                              }
-                                            }}
-                                            disabled={isDisabled}
-                                            className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                                              isDisabled 
-                                                ? 'text-gray-400 cursor-not-allowed opacity-50' 
-                                                : 'hover:bg-gray-50'
-                                            }`}
-                                            style={isDisabled ? {} : { color: '#464F5E' }}
-                                          >
-                                            {type.label}
-                                          </button>
-                                        );
-                                      })}
+                            {(() => {
+                              // Separate application cards from other elements (for application steps)
+                              const isAppStep = step.isApplicationStep || isApplicationStepTemplate;
+                              const applicationCardElements = step.elements.filter(el => el.type === 'application_card');
+                              const otherElements = isAppStep 
+                                ? step.elements.filter(el => el.type !== 'application_card')
+                                : step.elements;
+                              
+                              return (
+                                <>
+                                  {/* Application Cards Section (only for application steps) */}
+                                  {isAppStep && (
+                                    <div className="mb-6">
+                                      <div className="flex justify-between items-center mb-4">
+                                        <h4 className="text-base font-medium" style={{ color: '#464F5E' }}>
+                                          Application cards configuration
+                                        </h4>
+                                      </div>
+                                      {applicationCardElements.length > 0 ? (
+                                        applicationCardElements.map((element) => (
+                                          <div key={element.id} id={`element-${element.id}`} className="mb-4">
+                                            <CardEditor
+                                              element={element}
+                                              stepIndex={steps.findIndex(s => s.id === step.id)}
+                                              onUpdateElement={(stepIndex, elementId, updates) => {
+                                                const targetStep = steps[stepIndex];
+                                                updateElement(targetStep.id, elementId, updates);
+                                              }}
+                                              primaryColor={primaryColor}
+                                              showSelectionConfig={false}
+                                              disableAddCard={false}
+                                            />
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                          <p className="text-sm text-gray-500 text-center mb-3">No cards added yet</p>
+                                          <div className="flex justify-center">
+                                            <TextButton
+                                              onClick={() => {
+                                                if (!hasCardElement(step.id)) {
+                                                  addElement(step.id, APPLICATION_CARD_TYPE);
+                                                }
+                                              }}
+                                              size="sm"
+                                              disabled={hasCardElement(step.id)}
+                                            >
+                                              <Plus size={16} />
+                                              Add card
+                                            </TextButton>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
+                                  )}
 
-                            {step.elements.length > 0 ? (
-                              <div className="space-y-2">
-                                {step.elements.map((element) => (
+                                  {/* Regular Elements Section */}
+                                  <div className="flex justify-between items-center mb-3">
+                                    <label className="block text-sm font-medium" style={{ color: '#464F5E' }}>
+                                      Elements
+                                    </label>
+                                    <div className="relative">
+                                      <TextButton
+                                        onClick={() => setOpenElementMenuStepId(openElementMenuStepId === step.id ? null : step.id)}
+                                        size="sm"
+                                      >
+                                        <Plus size={16} />
+                                        Add element
+                                      </TextButton>
+                                      {openElementMenuStepId === step.id && (
+                                        <>
+                                          <div
+                                            className="fixed inset-0 z-10"
+                                            onClick={() => setOpenElementMenuStepId(null)}
+                                          />
+                                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                            {ELEMENT_TYPES.filter((type) => {
+                                              // Exclude application_card from menu for all steps
+                                              return type.type !== APPLICATION_CARD_TYPE;
+                                            }).map((type) => {
+                                              const isCardType = isCardElement(type.type);
+                                              const isDisabled = isCardType && hasCardElement(step.id);
+                                              
+                                              return (
+                                                <button
+                                                  key={type.type}
+                                                  onClick={() => {
+                                                    if (!isDisabled) {
+                                                      addElement(step.id, type.type);
+                                                      setOpenElementMenuStepId(null);
+                                                    }
+                                                  }}
+                                                  disabled={isDisabled}
+                                                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                                                    isDisabled 
+                                                      ? 'text-gray-400 cursor-not-allowed opacity-50' 
+                                                      : 'hover:bg-gray-50'
+                                                  }`}
+                                                  style={isDisabled ? {} : { color: '#464F5E' }}
+                                                >
+                                                  {type.label}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {otherElements.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {otherElements.map((element) => (
                                   <div
                                     key={element.id}
                                     id={`element-${element.id}`}
@@ -1212,7 +1479,7 @@ export default function TemplateEditor({
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <button
-                                          onClick={() => deleteElement(step.id, element.id)}
+                                          onClick={async () => await deleteElement(step.id, element.id)}
                                           className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                         >
                                           <Trash2 size={16} />
@@ -1399,16 +1666,28 @@ export default function TemplateEditor({
                                       />
                                     )}
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
-                            )}
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       )}
                     </div>
-                  ))}
+                        {/* Drop indicator line below */}
+                        {dropTargetStepId === step.id && dropTargetStepPosition === 'below' && draggedStepId && draggedStepId !== step.id && (
+                          <div 
+                            className="h-0.5 my-1 transition-all pointer-events-none"
+                            style={{ backgroundColor: '#4D3EE0' }}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
 
                   {steps.length === 0 && (
                     <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg">
@@ -1420,20 +1699,23 @@ export default function TemplateEditor({
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Fixed Footer */}
-      <div className="fixed bottom-0 left-80 right-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end shadow-lg z-30">
-        <Tooltip content="No changes to save" disabled={hasChanges}>
-          <PrimaryButton 
-            onClick={handleSave} 
-            disabled={!hasChanges}
-          >
-            <Save size={18} />
-            Save
-          </PrimaryButton>
-        </Tooltip>
-      </div>
+      {activeTab === 'edit' && (
+        <div className="fixed bottom-0 left-80 right-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end shadow-lg z-30">
+          <Tooltip content="No changes to save" disabled={hasChanges}>
+            <PrimaryButton 
+              onClick={handleSave} 
+              disabled={!hasChanges}
+            >
+              <Save size={18} />
+              Save
+            </PrimaryButton>
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 }

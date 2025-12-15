@@ -14,7 +14,7 @@ export default function EditorField({
   disabled = false,
   className = '' 
 }: EditorFieldProps) {
-  const baseClasses = "px-3 py-2 text-sm border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none hover:shadow-md transition-all duration-200";
+  const baseClasses = "px-3 py-2 text-sm border border-gray-300 bg-white text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500 hover:shadow-md transition-all duration-200";
   const disabledClasses = disabled ? "bg-gray-50 text-gray-400 cursor-not-allowed" : "";
   const roundedClasses = "rounded-lg"; // 8px corner radius (rounded-lg in Tailwind)
 
