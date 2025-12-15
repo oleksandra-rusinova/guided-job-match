@@ -1,11 +1,14 @@
 import { useState, FormEvent } from 'react';
 import { Mail, Lock } from 'lucide-react';
+import { useModal } from '../contexts/ModalContext';
+import { logLogin } from '../utils/loginHistory';
 
 interface LoginProps {
   onLogin: () => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const { alert: showAlert } = useModal();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -38,6 +41,9 @@ export default function Login({ onLogin }: LoginProps) {
       localStorage.setItem('isAuthenticated', 'true');
       localStorage.setItem('userEmail', email);
       localStorage.setItem('loginTime', new Date().toISOString());
+      
+      // Log login event
+      await logLogin(email);
       
       setIsLoading(false);
       onLogin();
@@ -129,9 +135,11 @@ export default function Login({ onLogin }: LoginProps) {
               <button
                 type="button"
                 className="text-indigo-700 hover:text-indigo-900 font-medium focus:outline-none focus:underline"
-                onClick={() => {
+                onClick={async () => {
                   // For now, just show an alert or you can implement actual signup later
-                  alert('Sign up functionality coming soon');
+                  await showAlert({
+                    message: 'Sign up functionality coming soon',
+                  });
                 }}
               >
                 Sign up

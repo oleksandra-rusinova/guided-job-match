@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react';
 import PrimaryButton from './PrimaryButton';
 import SecondaryButton from './SecondaryButton';
 import TextField from './TextField';
-import CustomDropdown from './CustomDropdown';
+import TabControl from './TabControl';
 
 // ===== Types =====
 export type HSVA = { h: number; s: number; v: number; a: number };
@@ -321,9 +321,9 @@ export default function ColorPicker({ selectedColor, onColorChange }: ColorPicke
 
 
   const formatOptions = [
-    { id: 'hex', title: 'Hex' },
-    { id: 'rgb', title: 'RGB' },
-    { id: 'hsl', title: 'HSL' }
+    { value: 'hex', label: 'HEX' },
+    { value: 'rgb', label: 'RGB' },
+    { value: 'hsl', label: 'HSL' }
   ];
 
   // Check if selected color is a custom color (not in preset colors)
@@ -381,6 +381,17 @@ export default function ColorPicker({ selectedColor, onColorChange }: ColorPicke
               >
                 <X size={18} />
               </button>
+            </div>
+
+            {/* Format Switch */}
+            <div className="mb-4">
+              <TabControl
+                options={formatOptions}
+                value={colorFormat}
+                onChange={(value) => setColorFormat(value as 'hex' | 'rgb' | 'hsl')}
+                primaryColor="#2563EB"
+                className="w-full"
+              />
             </div>
 
             {/* SV Square */}
@@ -441,25 +452,14 @@ export default function ColorPicker({ selectedColor, onColorChange }: ColorPicke
 
             </div>
 
-
-            {/* Format Dropdown and Input */}
-            <div className="flex gap-3 mb-4">
-              <div className="w-20">
-                <CustomDropdown
-                  value={colorFormat}
-                  primaryColor="#2563EB"
-                  options={formatOptions}
-                  onChange={(value) => setColorFormat(value as 'hex' | 'rgb' | 'hsl')}
-                />
-              </div>
-              <div className="flex-1">
-                <TextField
-                  value={formattedColor}
-                  primaryColor="#2563EB"
-                  showLabel={false}
-                  onChange={onColorInputChange}
-                />
-              </div>
+            {/* Color Input */}
+            <div className="mb-4">
+              <TextField
+                value={formattedColor}
+                primaryColor="#2563EB"
+                showLabel={false}
+                onChange={onColorInputChange}
+              />
             </div>
 
             {/* Action Buttons */}

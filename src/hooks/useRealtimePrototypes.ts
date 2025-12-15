@@ -2,13 +2,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { Prototype } from '../types';
 import { supabase } from '../utils/supabase';
 import { getPrototypes } from '../utils/storage';
-import { useLoading } from '../contexts/LoadingContext';
 
 export function useRealtimePrototypes() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const { withLoading } = useLoading();
 
   // Transform database record to Prototype format
   const transformRecord = useCallback((record: any): Prototype => {
@@ -29,7 +27,7 @@ export function useRealtimePrototypes() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const data = await withLoading(() => getPrototypes());
+        const data = await getPrototypes();
         setPrototypes(data);
       } catch (error) {
         console.error('Error loading prototypes:', error);
@@ -39,7 +37,7 @@ export function useRealtimePrototypes() {
     };
 
     loadInitialData();
-  }, [withLoading]);
+  }, []);
 
   // Set up Realtime subscription
   useEffect(() => {
@@ -65,20 +63,18 @@ export function useRealtimePrototypes() {
           // Reload prototypes after any change
           try {
             if (!supabase) return;
-            await withLoading(async () => {
-              const { data, error } = await supabase
-                .from('prototypes')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const { data, error } = await supabase
+              .from('prototypes')
+              .select('*')
+              .order('created_at', { ascending: false });
 
-              if (error) {
-                console.error('Error fetching prototypes after Realtime event:', error);
-                return;
-              }
+            if (error) {
+              console.error('Error fetching prototypes after Realtime event:', error);
+              return;
+            }
 
-              const transformed = (data || []).map(transformRecord);
-              setPrototypes(transformed);
-            });
+            const transformed = (data || []).map(transformRecord);
+            setPrototypes(transformed);
           } catch (error) {
             console.error('Error processing Realtime event:', error);
           }

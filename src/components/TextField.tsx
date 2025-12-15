@@ -19,7 +19,7 @@ export default function TextField({
   showLabel = true, 
   value, 
   placeholder = 'Placeholder', 
-  primaryColor: _primaryColor, // eslint-disable-line @typescript-eslint/no-unused-vars 
+  primaryColor = '#4D3EE0',
   disabled = false,
   helperText,
   error = false,
@@ -36,7 +36,7 @@ export default function TextField({
   } else if (disabled) {
     borderColor = '#E5E7EB'; // gray-200
   } else if (isFocused) {
-    borderColor = '#9CA3AF'; // gray-400
+    borderColor = primaryColor; // Use primary color for focus
   } else if (isHovered) {
     borderColor = '#9CA3AF'; // gray-400
   } else {

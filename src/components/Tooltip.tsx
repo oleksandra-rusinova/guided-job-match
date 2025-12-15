@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 interface TooltipProps {
@@ -29,22 +29,44 @@ export default function Tooltip({ children, content, delay = 300, disabled = fal
     }, delay);
   };
 
-  const hideTooltip = () => {
+  const hideTooltip = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
     setIsVisible(false);
     setPosition(null);
-  };
+  }, []);
 
+  // Hide tooltip when content changes or becomes disabled/empty
   useEffect(() => {
+    if (disabled || !content) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setIsVisible(false);
+      setPosition(null);
+    }
+  }, [content, disabled]);
+
+  // Hide tooltip when mouse leaves the document
+  useEffect(() => {
+    const handleMouseLeave = () => {
+      hideTooltip();
+    };
+
+    document.addEventListener('mouseleave', handleMouseLeave);
+    
     return () => {
+      document.removeEventListener('mouseleave', handleMouseLeave);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      setIsVisible(false);
+      setPosition(null);
     };
-  }, []);
+  }, [hideTooltip]);
 
   return (
     <div

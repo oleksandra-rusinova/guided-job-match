@@ -300,7 +300,7 @@ export default function IconButton({
       {isFocused && !disabled && isKeyboardFocus && (
         <div 
           className={focusRingClasses[size]}
-          style={{ borderColor: primaryColor || undefined, outlineColor: primaryColor || undefined }}
+          style={{ borderColor: primaryColor || '#4D3EE0', outlineColor: primaryColor || '#4D3EE0' }}
         />
       )}
     </div>

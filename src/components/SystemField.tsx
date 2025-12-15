@@ -31,7 +31,7 @@ export default function SystemField({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const baseClasses = "w-full px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none hover:shadow-md transition-all duration-200";
+  const baseClasses = "w-full px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500 hover:shadow-md transition-all duration-200";
   const disabledClasses = disabled ? "bg-gray-50 text-gray-400 cursor-not-allowed" : "";
   const labelClasses = "block text-sm font-medium mb-2";
   const labelStyle = { color: '#464F5E' };

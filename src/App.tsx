@@ -10,7 +10,9 @@ import PrototypeView from './components/PrototypeView';
 import TemplatesPage from './components/TemplatesPage';
 import TemplateSelector from './components/TemplateSelector';
 import Login from './components/Login';
+import ActivityLog from './components/ActivityLog';
 import { LoadingProvider, useLoading } from './contexts/LoadingContext';
+import { ModalProvider, useModal } from './contexts/ModalContext';
 import Loader from './components/Loader';
 
 // Protected Route Component
@@ -33,10 +35,35 @@ function AppContent() {
   // Use Realtime hook for prototypes - automatically updates on changes
   const { prototypes, updatePrototypeInState, removePrototypeFromState, isLoading } = useRealtimePrototypes();
   const { withLoading } = useLoading();
+  const { confirm } = useModal();
 
+  // Load prototype templates on mount
   useEffect(() => {
-    setPrototypeTemplates(getPrototypeTemplates());
+    const loadTemplates = async () => {
+      try {
+        const templates = await getPrototypeTemplates();
+        setPrototypeTemplates(templates);
+      } catch (error) {
+        console.error('Error loading prototype templates:', error);
+      }
+    };
+    loadTemplates();
   }, []);
+
+  // Reload templates when template selector opens to ensure we have the latest templates
+  useEffect(() => {
+    if (showTemplateSelector) {
+      const loadTemplates = async () => {
+        try {
+          const templates = await getPrototypeTemplates();
+          setPrototypeTemplates(templates);
+        } catch (error) {
+          console.error('Error loading prototype templates:', error);
+        }
+      };
+      loadTemplates();
+    }
+  }, [showTemplateSelector]);
 
   const handleSavePrototype = async (prototype: Prototype) => {
     const result = await withLoading(() => savePrototype(prototype));
@@ -49,7 +76,10 @@ function AppContent() {
   };
 
   const handleDeletePrototype = async (id: string) => {
-    if (confirm('Are you sure you want to delete this prototype?')) {
+    const confirmed = await confirm({
+      message: 'Are you sure you want to delete this prototype?',
+    });
+    if (confirmed) {
       await withLoading(() => deletePrototype(id));
       // Update local state immediately for instant UI feedback
       removePrototypeFromState(id);
@@ -240,6 +270,12 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+
+        {/* Activity Log - accessible only via direct link, not from app navigation */}
+        <Route
+          path="/activitylog"
+          element={<ActivityLog />}
+        />
       </Routes>
 
       <TemplateSelector
@@ -256,10 +292,12 @@ function AppContent() {
 export default function App() {
   return (
     <LoadingProvider>
-      <BrowserRouter>
-        <AppContent />
-        <Loader />
-      </BrowserRouter>
+      <ModalProvider>
+        <BrowserRouter>
+          <AppContent />
+          <Loader />
+        </BrowserRouter>
+      </ModalProvider>
     </LoadingProvider>
   );
 }

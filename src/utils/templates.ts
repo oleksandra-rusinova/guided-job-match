@@ -6,6 +6,7 @@ import {
   isIndexedDBAvailable,
   getIndexedDBStorageUsage 
 } from './indexedDB';
+import { supabase } from './supabase';
 
 const QUESTION_TEMPLATES_KEY = 'questionTemplates';
 const PROTOTYPE_TEMPLATES_KEY = 'prototypeTemplates';
@@ -13,6 +14,9 @@ const APPLICATION_STEP_TEMPLATES_KEY = 'applicationStepTemplates';
 
 // Use IndexedDB if available, otherwise fallback to localStorage
 const USE_INDEXED_DB = isIndexedDBAvailable();
+
+// Check if Supabase is available for cloud storage
+const USE_SUPABASE = !!supabase;
 
 // Migrate existing localStorage data to IndexedDB on first use
 const migrateToIndexedDB = async () => {
@@ -307,6 +311,31 @@ const deepCopyConfigSync = (config: any): any => {
 
 // Question Templates
 export const getQuestionTemplates = async (): Promise<QuestionTemplate[]> => {
+  // Try Supabase first for cloud storage
+  if (USE_SUPABASE) {
+    try {
+      const { data, error } = await supabase
+        .from('question_templates')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching question templates from Supabase:', error);
+      } else if (data && data.length > 0) {
+        // Transform database records to QuestionTemplate format
+        return data.map((record: any) => ({
+          id: record.id,
+          name: record.name,
+          step: record.step_data,
+          createdAt: record.created_at,
+        }));
+      }
+    } catch (error) {
+      console.error('Exception fetching question templates from Supabase:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       return await getAllFromStore<QuestionTemplate>('questionTemplates');
@@ -320,6 +349,55 @@ export const getQuestionTemplates = async (): Promise<QuestionTemplate[]> => {
 
 export const saveQuestionTemplate = async (template: QuestionTemplate): Promise<void> => {
   try {
+    // Try Supabase first for cloud storage
+    if (USE_SUPABASE) {
+      try {
+        const templateData = {
+          id: template.id,
+          name: template.name,
+          step_data: template.step,
+          created_at: template.createdAt,
+        };
+
+        // Check if template exists
+        const { data: existing } = await supabase
+          .from('question_templates')
+          .select('id')
+          .eq('id', template.id)
+          .single();
+
+        if (existing) {
+          // Update existing template
+          const { error } = await supabase
+            .from('question_templates')
+            .update({
+              name: template.name,
+              step_data: template.step,
+            })
+            .eq('id', template.id);
+
+          if (error) {
+            console.error('Error updating question template in Supabase:', error);
+            throw error;
+          }
+        } else {
+          // Insert new template
+          const { error } = await supabase
+            .from('question_templates')
+            .insert(templateData);
+
+          if (error) {
+            console.error('Error saving question template to Supabase:', error);
+            throw error;
+          }
+        }
+        return; // Successfully saved to Supabase
+      } catch (error) {
+        console.error('Exception saving question template to Supabase, falling back to local storage:', error);
+      }
+    }
+
+    // Fallback to IndexedDB/localStorage
     if (USE_INDEXED_DB) {
       try {
         const templates = await getQuestionTemplates();
@@ -358,6 +436,25 @@ export const saveQuestionTemplate = async (template: QuestionTemplate): Promise<
 };
 
 export const deleteQuestionTemplate = async (id: string): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const { error } = await supabase
+        .from('question_templates')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting question template from Supabase:', error);
+        throw error;
+      }
+      return; // Successfully deleted from Supabase
+    } catch (error) {
+      console.error('Exception deleting question template from Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       await deleteFromStore('questionTemplates', id);
@@ -372,6 +469,29 @@ export const deleteQuestionTemplate = async (id: string): Promise<void> => {
 };
 
 export const updateQuestionTemplate = async (id: string, updates: Partial<QuestionTemplate>): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const updateData: any = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.step !== undefined) updateData.step_data = updates.step;
+
+      const { error } = await supabase
+        .from('question_templates')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating question template in Supabase:', error);
+        throw error;
+      }
+      return; // Successfully updated in Supabase
+    } catch (error) {
+      console.error('Exception updating question template in Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   const templates = await getQuestionTemplates();
   const index = templates.findIndex(t => t.id === id);
   if (index >= 0) {
@@ -428,6 +548,31 @@ export const createQuestionTemplate = async (name: string, step: Step): Promise<
 
 // Prototype Templates
 export const getPrototypeTemplates = async (): Promise<PrototypeTemplate[]> => {
+  // Try Supabase first for cloud storage
+  if (USE_SUPABASE) {
+    try {
+      const { data, error } = await supabase
+        .from('prototype_templates')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching prototype templates from Supabase:', error);
+      } else if (data && data.length > 0) {
+        // Transform database records to PrototypeTemplate format
+        return data.map((record: any) => ({
+          id: record.id,
+          name: record.name,
+          prototype: record.prototype_data,
+          createdAt: record.created_at,
+        }));
+      }
+    } catch (error) {
+      console.error('Exception fetching prototype templates from Supabase:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       return await getAllFromStore<PrototypeTemplate>('prototypeTemplates');
@@ -441,6 +586,57 @@ export const getPrototypeTemplates = async (): Promise<PrototypeTemplate[]> => {
 
 export const savePrototypeTemplate = async (template: PrototypeTemplate): Promise<void> => {
   try {
+    // Try Supabase first for cloud storage
+    if (USE_SUPABASE) {
+      try {
+        const templateData = {
+          id: template.id,
+          name: template.name,
+          prototype_data: template.prototype,
+          created_at: template.createdAt,
+        };
+
+        // Check if template exists
+        const { data: existing } = await supabase
+          .from('prototype_templates')
+          .select('id')
+          .eq('id', template.id)
+          .single();
+
+        if (existing) {
+          // Update existing template
+          const { error } = await supabase
+            .from('prototype_templates')
+            .update({
+              name: template.name,
+              prototype_data: template.prototype,
+            })
+            .eq('id', template.id);
+
+          if (error) {
+            console.error('Error updating prototype template in Supabase:', error);
+            throw error;
+          }
+          console.log('Prototype template updated in Supabase successfully');
+        } else {
+          // Insert new template
+          const { error } = await supabase
+            .from('prototype_templates')
+            .insert(templateData);
+
+          if (error) {
+            console.error('Error saving prototype template to Supabase:', error);
+            throw error;
+          }
+          console.log('Prototype template saved to Supabase successfully');
+        }
+        return; // Successfully saved to Supabase
+      } catch (error) {
+        console.error('Exception saving prototype template to Supabase, falling back to local storage:', error);
+      }
+    }
+
+    // Fallback to IndexedDB/localStorage
     if (USE_INDEXED_DB) {
       try {
         const templates = await getPrototypeTemplates();
@@ -534,6 +730,25 @@ export const savePrototypeTemplate = async (template: PrototypeTemplate): Promis
 };
 
 export const deletePrototypeTemplate = async (id: string): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const { error } = await supabase
+        .from('prototype_templates')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting prototype template from Supabase:', error);
+        throw error;
+      }
+      return; // Successfully deleted from Supabase
+    } catch (error) {
+      console.error('Exception deleting prototype template from Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       await deleteFromStore('prototypeTemplates', id);
@@ -548,6 +763,29 @@ export const deletePrototypeTemplate = async (id: string): Promise<void> => {
 };
 
 export const updatePrototypeTemplate = async (id: string, updates: Partial<PrototypeTemplate>): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const updateData: any = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.prototype !== undefined) updateData.prototype_data = updates.prototype;
+
+      const { error } = await supabase
+        .from('prototype_templates')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating prototype template in Supabase:', error);
+        throw error;
+      }
+      return; // Successfully updated in Supabase
+    } catch (error) {
+      console.error('Exception updating prototype template in Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   const templates = await getPrototypeTemplates();
   const index = templates.findIndex(t => t.id === id);
   if (index >= 0) {
@@ -671,6 +909,31 @@ export const createPrototypeTemplate = async (
 
 // Application Step Templates
 export const getApplicationStepTemplates = async (): Promise<ApplicationStepTemplate[]> => {
+  // Try Supabase first for cloud storage
+  if (USE_SUPABASE) {
+    try {
+      const { data, error } = await supabase
+        .from('application_step_templates')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching application step templates from Supabase:', error);
+      } else if (data && data.length > 0) {
+        // Transform database records to ApplicationStepTemplate format
+        return data.map((record: any) => ({
+          id: record.id,
+          name: record.name,
+          step: record.step_data,
+          createdAt: record.created_at,
+        }));
+      }
+    } catch (error) {
+      console.error('Exception fetching application step templates from Supabase:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       return await getAllFromStore<ApplicationStepTemplate>('applicationStepTemplates');
@@ -684,6 +947,55 @@ export const getApplicationStepTemplates = async (): Promise<ApplicationStepTemp
 
 export const saveApplicationStepTemplate = async (template: ApplicationStepTemplate): Promise<void> => {
   try {
+    // Try Supabase first for cloud storage
+    if (USE_SUPABASE) {
+      try {
+        const templateData = {
+          id: template.id,
+          name: template.name,
+          step_data: template.step,
+          created_at: template.createdAt,
+        };
+
+        // Check if template exists
+        const { data: existing } = await supabase
+          .from('application_step_templates')
+          .select('id')
+          .eq('id', template.id)
+          .single();
+
+        if (existing) {
+          // Update existing template
+          const { error } = await supabase
+            .from('application_step_templates')
+            .update({
+              name: template.name,
+              step_data: template.step,
+            })
+            .eq('id', template.id);
+
+          if (error) {
+            console.error('Error updating application step template in Supabase:', error);
+            throw error;
+          }
+        } else {
+          // Insert new template
+          const { error } = await supabase
+            .from('application_step_templates')
+            .insert(templateData);
+
+          if (error) {
+            console.error('Error saving application step template to Supabase:', error);
+            throw error;
+          }
+        }
+        return; // Successfully saved to Supabase
+      } catch (error) {
+        console.error('Exception saving application step template to Supabase, falling back to local storage:', error);
+      }
+    }
+
+    // Fallback to IndexedDB/localStorage
     if (USE_INDEXED_DB) {
       try {
         const templates = await getApplicationStepTemplates();
@@ -722,6 +1034,25 @@ export const saveApplicationStepTemplate = async (template: ApplicationStepTempl
 };
 
 export const deleteApplicationStepTemplate = async (id: string): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const { error } = await supabase
+        .from('application_step_templates')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting application step template from Supabase:', error);
+        throw error;
+      }
+      return; // Successfully deleted from Supabase
+    } catch (error) {
+      console.error('Exception deleting application step template from Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   if (USE_INDEXED_DB) {
     try {
       await deleteFromStore('applicationStepTemplates', id);
@@ -736,6 +1067,29 @@ export const deleteApplicationStepTemplate = async (id: string): Promise<void> =
 };
 
 export const updateApplicationStepTemplate = async (id: string, updates: Partial<ApplicationStepTemplate>): Promise<void> => {
+  // Try Supabase first
+  if (USE_SUPABASE) {
+    try {
+      const updateData: any = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.step !== undefined) updateData.step_data = updates.step;
+
+      const { error } = await supabase
+        .from('application_step_templates')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating application step template in Supabase:', error);
+        throw error;
+      }
+      return; // Successfully updated in Supabase
+    } catch (error) {
+      console.error('Exception updating application step template in Supabase, falling back to local storage:', error);
+    }
+  }
+
+  // Fallback to IndexedDB/localStorage
   const templates = await getApplicationStepTemplates();
   const index = templates.findIndex(t => t.id === id);
   if (index >= 0) {
