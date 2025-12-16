@@ -1,11 +1,12 @@
 // IndexedDB utility for storing templates with larger capacity than localStorage
 
 const DB_NAME = 'PrototypeTemplatesDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increment version to add prototypes store
 const STORE_NAMES = {
   question: 'questionTemplates',
   prototype: 'prototypeTemplates',
   applicationStep: 'applicationStepTemplates',
+  prototypes: 'prototypes', // Add prototypes store
 };
 
 let db: IDBDatabase | null = null;
@@ -42,6 +43,9 @@ const initDB = (): Promise<IDBDatabase> => {
       }
       if (!database.objectStoreNames.contains(STORE_NAMES.applicationStep)) {
         database.createObjectStore(STORE_NAMES.applicationStep, { keyPath: 'id' });
+      }
+      if (!database.objectStoreNames.contains(STORE_NAMES.prototypes)) {
+        database.createObjectStore(STORE_NAMES.prototypes, { keyPath: 'id' });
       }
     };
   });
@@ -184,14 +188,19 @@ export const getIndexedDBStorageUsage = async (): Promise<{ used: number; estima
     
     // Estimate size by getting all data
     for (const storeName of Object.values(STORE_NAMES)) {
-      const items = await getAllFromStore(storeName);
-      const serialized = JSON.stringify(items);
-      totalSize += new Blob([serialized]).size;
+      try {
+        const items = await getAllFromStore(storeName);
+        const serialized = JSON.stringify(items);
+        totalSize += new Blob([serialized]).size;
+      } catch (error) {
+        // Skip stores that don't exist yet
+        console.warn(`Skipping store ${storeName} in size calculation:`, error);
+      }
     }
     
     // IndexedDB typically has much larger limits (hundreds of MB to GB)
-    // Use a conservative estimate of 50MB per origin
-    const estimatedLimit = 50 * 1024 * 1024; // 50MB
+    // Use a conservative estimate of 100MB per origin (can be much larger)
+    const estimatedLimit = 100 * 1024 * 1024; // 100MB
     const percentage = (totalSize / estimatedLimit) * 100;
     
     return { used: totalSize, estimatedLimit, percentage };

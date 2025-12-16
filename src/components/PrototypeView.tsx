@@ -4,31 +4,8 @@ import { Prototype, Step, Element, ElementType } from '../types';
 import { useLoading } from '../contexts/LoadingContext';
 
 function ArcSpinner({ size = 48, color = '#6633FF' }: { size?: number; color?: string }) {
-  const strokeWidth = size * 0.15;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const arcLength = circumference * 0.75; // 75% of the circle for the arc
-
   return (
-    <svg
-      width={size}
-      height={size}
-      className="animate-spin"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeDasharray={arcLength}
-        strokeDashoffset={arcLength * 0.25}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </svg>
+    <div className="w-11 h-11 origin-top-left -rotate-90 outline outline-[3px] outline-offset-[-1.50px] outline-components-progress-spinner-border animate-spin" />
   );
 }
 
@@ -111,10 +88,8 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
         setCurrentPage(Math.max(0, totalPages - 1));
       }
     }
-    // If currentPage was reset to 0 but we have a saved page, restore it
-    if (currentPage === 0 && savedPageRef.current !== null && savedPageRef.current > 0 && savedPageRef.current < totalPages) {
-      setCurrentPage(savedPageRef.current);
-    }
+    // Removed the logic that restores saved page when navigating to page 0
+    // This was preventing users from going back to the first step
   }, [totalPages, currentPage]);
 
   const canGoBack = currentPage > 0;
@@ -264,9 +239,11 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
 
       if (event.key === 'ArrowLeft' && canGoBack) {
         event.preventDefault();
+        savedPageRef.current = null; // Clear saved page ref on manual navigation
         setCurrentPage(p => p - 1);
       } else if (event.key === 'ArrowRight' && canGoNext) {
         event.preventDefault();
+        savedPageRef.current = null; // Clear saved page ref on manual navigation
         setCurrentPage(p => p + 1);
       }
     };
@@ -1530,12 +1507,25 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     : numCards >= 4
                       ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
                       : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Calculate wrapper width based on number of cards
+              // Each card is 368px, gap is 24px between cards
+              // 1 card: 680px (for centering)
+              // 2 cards: 368px * 2 + 24px = 760px
+              // 3 cards: 368px * 3 + 24px * 2 = 1152px
+              // 4+ cards: 368px * 3 + 24px * 2 = 1152px (3 columns max)
+              let wrapperWidth = '680px';
+              if (numCards === 2) {
+                wrapperWidth = '760px';
+              } else if (numCards >= 3) {
+                wrapperWidth = '1152px';
+              }
+              
               // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
                 : numCards >= 4
-                  ? { width: '1152px', margin: '0', padding: '0' }
-                  : { width: '680px', margin: '0 auto', padding: '0' };
+                  ? { width: wrapperWidth, margin: '0', padding: '0' }
+                  : { width: wrapperWidth, margin: '0 auto', padding: '0' };
               
               // Use flexbox with fixed width for 1 or 2 cards, grid for others
               // In split screen mode, always use grid with 2 columns
@@ -1545,7 +1535,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     {useFixedWidth ? (
-                      <div className="flex justify-center" style={{ gap: '24px' }}>
+                      <div className="flex justify-center gap-[24px]">
                         {options.map((opt: OptionType) => (
                           <div key={opt.id} style={{ width: '368px' }}>
                             <ApplicationCard
@@ -1565,9 +1555,9 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                         ))}
                       </div>
                     ) : (
-                      <div className={`grid ${gridCols} justify-center`} style={{ gap: '24px' }}>
+                      <div className={`grid ${gridCols} justify-center gap-[24px]`}>
                         {options.map((opt: OptionType) => (
-                          <div key={opt.id} style={numCards > 3 && !isSplitScreen ? { width: '368px' } : {}}>
+                          <div key={opt.id} style={{ width: '368px' }}>
                             <ApplicationCard
                               id={opt.id}
                               title={opt.title || 'Application'}
@@ -1696,8 +1686,14 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
         <Footer
           onExit={onExit}
           showExit={showActions}
-          onNext={() => setCurrentPage(p => p + 1)}
-          onBack={() => setCurrentPage(p => p - 1)}
+          onNext={() => {
+            savedPageRef.current = null; // Clear saved page ref on manual navigation
+            setCurrentPage(p => p + 1);
+          }}
+          onBack={() => {
+            savedPageRef.current = null; // Clear saved page ref on manual navigation
+            setCurrentPage(p => p - 1);
+          }}
           canGoBack={canGoBack}
           canGoNext={canGoNext}
           primaryColor={prototype.primaryColor}
@@ -2322,14 +2318,7 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                 className="w-full"
                 disabled={!hasChanges || isManualSaving}
               >
-                {isManualSaving ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <ArcSpinner size={16} color="white" />
-                    <span>Saving...</span>
-                  </div>
-                ) : (
-                  'Save'
-                )}
+                {isManualSaving ? 'Saving...' : 'Save'}
               </PrimaryButton>
             </div>
           </div>

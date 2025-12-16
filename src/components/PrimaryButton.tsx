@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 
 interface PrimaryButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
@@ -26,6 +26,7 @@ export default function PrimaryButton({
   const [isHovered, setIsHovered] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [isKeyboardFocus, setIsKeyboardFocus] = useState(false);
+  const mouseDownRef = useRef(false);
 
   const sizeClasses = {
     sm: 'px-3 py-1.5 h-8 rounded-lg',
@@ -67,6 +68,13 @@ export default function PrimaryButton({
   }
 
   const handleFocus = (e: React.FocusEvent<HTMLButtonElement>) => {
+    // Only show focus ring for keyboard navigation, not mouse clicks
+    if (mouseDownRef.current) {
+      // If focus came from a mouse click, blur immediately to prevent focus ring
+      e.currentTarget.blur();
+      mouseDownRef.current = false;
+      return;
+    }
     setIsFocused(true);
     onFocus?.(e);
   };
@@ -78,7 +86,8 @@ export default function PrimaryButton({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Prevent focus ring on mouse clicks
+    // Mark that this is a mouse click to prevent focus ring
+    mouseDownRef.current = true;
     setIsKeyboardFocus(false);
     if (!disabled) setIsActive(true);
     onMouseDown?.(e);
@@ -97,6 +106,10 @@ export default function PrimaryButton({
 
   const handleMouseUp = (e: React.MouseEvent<HTMLButtonElement>) => {
     setIsActive(false);
+    // Reset mouse down flag after a short delay to allow focus event to check it
+    setTimeout(() => {
+      mouseDownRef.current = false;
+    }, 0);
     onMouseUp?.(e);
   };
 

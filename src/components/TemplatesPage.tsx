@@ -44,6 +44,7 @@ export default function TemplatesPage({
   const [showNameModal, setShowNameModal] = useState(false);
   const [templateToRename, setTemplateToRename] = useState<{ type: 'question' | 'prototype' | 'applicationStep'; id: string } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newlyCreatedTemplateId, setNewlyCreatedTemplateId] = useState<string | null>(null);
   
   // System message modal state
   const [systemMessage, setSystemMessage] = useState<{
@@ -93,8 +94,10 @@ export default function TemplatesPage({
       setQuestionTemplates(questions);
       setPrototypeTemplates(prototypes);
       setApplicationStepTemplates(applications);
+      return { questions, prototypes, applications };
     } catch (error) {
       console.error('Error loading templates:', error);
+      return { questions: [], prototypes: [], applications: [] };
     } finally {
       setIsLoading(false);
     }
@@ -106,10 +109,29 @@ export default function TemplatesPage({
     ? prototypeTemplates 
     : applicationStepTemplates;
 
+  // Auto-select newly created template when it appears in the templates array
+  useEffect(() => {
+    if (newlyCreatedTemplateId && templates.length > 0) {
+      const createdTemplate = templates.find(t => t.id === newlyCreatedTemplateId);
+      if (createdTemplate) {
+        const type = activeTabIndex === 0 
+          ? 'question' 
+          : activeTabIndex === 1 
+          ? 'prototype' 
+          : 'applicationStep';
+        setSelectedTemplate({
+          type: type as 'question' | 'prototype' | 'applicationStep',
+          template: createdTemplate,
+        });
+        setNewlyCreatedTemplateId(null); // Clear the flag
+      }
+    }
+  }, [templates, activeTabIndex, newlyCreatedTemplateId]);
+
   // Auto-select first template when templates are loaded or tab changes
   useEffect(() => {
-    // Only auto-select if no template is currently selected and there are templates available
-    if (!selectedTemplate && templates.length > 0) {
+    // Only auto-select if no template is currently selected, no newly created template is pending, and there are templates available
+    if (!selectedTemplate && !newlyCreatedTemplateId && templates.length > 0) {
       const type = activeTabIndex === 0 
         ? 'question' 
         : activeTabIndex === 1 
@@ -120,7 +142,7 @@ export default function TemplatesPage({
         template: templates[0],
       });
     }
-  }, [templates, activeTabIndex, selectedTemplate]);
+  }, [templates, activeTabIndex, selectedTemplate, newlyCreatedTemplateId]);
 
   const filteredTemplates = useMemo(() => {
     if (!searchQuery.trim()) return templates;
@@ -247,6 +269,8 @@ export default function TemplatesPage({
 
   const handleCreateTemplate = async (name: string) => {
     try {
+      let newTemplateId: string;
+      
       if (activeTabIndex === 0) {
         // Create question template
         const newTemplate: QuestionTemplate = {
@@ -268,9 +292,10 @@ export default function TemplatesPage({
           },
           createdAt: new Date().toISOString(),
         };
+        newTemplateId = newTemplate.id;
         await saveQuestionTemplate(newTemplate);
+        setNewlyCreatedTemplateId(newTemplateId);
         await loadTemplates();
-        setSelectedTemplate({ type: 'question', template: newTemplate });
       } else if (activeTabIndex === 1) {
         // Create prototype template
         const newTemplate: PrototypeTemplate = {
@@ -286,9 +311,10 @@ export default function TemplatesPage({
           },
           createdAt: new Date().toISOString(),
         };
+        newTemplateId = newTemplate.id;
         await savePrototypeTemplate(newTemplate);
+        setNewlyCreatedTemplateId(newTemplateId);
         await loadTemplates();
-        setSelectedTemplate({ type: 'prototype', template: newTemplate });
       } else {
         // Create application template
         const newTemplate: ApplicationStepTemplate = {
@@ -313,10 +339,13 @@ export default function TemplatesPage({
           },
           createdAt: new Date().toISOString(),
         };
+        newTemplateId = newTemplate.id;
         await saveApplicationStepTemplate(newTemplate);
+        setNewlyCreatedTemplateId(newTemplateId);
         await loadTemplates();
-        setSelectedTemplate({ type: 'applicationStep', template: newTemplate });
       }
+      // Clear search query to ensure the new template is visible
+      setSearchQuery('');
       setShowCreateModal(false);
     } catch (error) {
       console.error('Error creating template:', error);

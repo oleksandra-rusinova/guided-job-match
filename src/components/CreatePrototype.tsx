@@ -56,7 +56,7 @@ import {
 import { updatePrototype } from '../utils/storage';
 
 interface CreatePrototypeProps {
-  onSave: (prototype: Prototype) => void;
+  onSave: (prototype: Prototype) => void | Promise<void>;
   onCancel: () => void;
   editingPrototype?: Prototype;
   template?: PrototypeTemplate | null;
@@ -109,6 +109,14 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   const [logoUrl, setLogoUrl] = useState(editingPrototype?.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [steps, setSteps] = useState<Step[]>(getInitialSteps());
+  
+  // Ref to track latest steps state to ensure we always have the most current data
+  const stepsRef = useRef<Step[]>(steps);
+  
+  // Update ref whenever steps change
+  useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
 
   // Build current prototype state for auto-save
   const currentPrototype: Prototype | null = editingPrototype ? {
@@ -342,8 +350,11 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       isApplicationStep: false,
     };
     // Insert before any application steps
-    const applicationSteps = steps.filter(s => s.isApplicationStep);
-    setSteps([...regularSteps, newStep, ...applicationSteps]);
+    setSteps(prevSteps => {
+      const regularSteps = prevSteps.filter(s => !s.isApplicationStep);
+      const applicationSteps = prevSteps.filter(s => s.isApplicationStep);
+      return [...regularSteps, newStep, ...applicationSteps];
+    });
     setExpandedStepId(newStep.id);
     setNewlyAddedStepId(newStep.id);
   };
@@ -367,7 +378,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       applicationStepSubheading: '',
     };
     // Application steps always go at the end
-    setSteps([...steps, newStep]);
+    setSteps(prevSteps => [...prevSteps, newStep]);
     setExpandedStepId(newStep.id);
     setNewlyAddedStepId(newStep.id);
   };
@@ -493,7 +504,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
           id: crypto.randomUUID(),
         })),
       };
-      setSteps([...steps, newStep]);
+      setSteps(prevSteps => [...prevSteps, newStep]);
       setExpandedStepId(newStep.id);
       setNewlyAddedStepId(newStep.id);
     }
@@ -511,7 +522,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
         })),
       };
       // Application steps always go at the end
-      setSteps([...steps, newStep]);
+      setSteps(prevSteps => [...prevSteps, newStep]);
       setExpandedStepId(newStep.id);
       setNewlyAddedStepId(newStep.id);
     }
@@ -536,7 +547,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   };
 
   const updateStep = (stepId: string, updates: Partial<Step>) => {
-    setSteps(steps.map(step => step.id === stepId ? { ...step, ...updates } : step));
+    setSteps(prevSteps => prevSteps.map(step => step.id === stepId ? { ...step, ...updates } : step));
   };
 
   const deleteStep = async (stepId: string) => {
@@ -669,41 +680,43 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       return;
     }
 
-    // Separate regular steps and application steps
-    const regularSteps = steps.filter(s => !s.isApplicationStep);
-    const applicationSteps = steps.filter(s => s.isApplicationStep);
-    
-    const draggedIndex = regularSteps.findIndex(s => s.id === active.id);
-    const targetIndex = regularSteps.findIndex(s => s.id === over.id);
-    
-    if (draggedIndex === -1 || targetIndex === -1) {
-      dndWarn('Invalid step indices:', { draggedIndex, targetIndex });
-      setActiveStepId(null);
-      return;
-    }
+    setSteps(prevSteps => {
+      // Separate regular steps and application steps
+      const regularSteps = prevSteps.filter(s => !s.isApplicationStep);
+      const applicationSteps = prevSteps.filter(s => s.isApplicationStep);
+      
+      const draggedIndex = regularSteps.findIndex(s => s.id === active.id);
+      const targetIndex = regularSteps.findIndex(s => s.id === over.id);
+      
+      if (draggedIndex === -1 || targetIndex === -1) {
+        dndWarn('Invalid step indices:', { draggedIndex, targetIndex });
+        setActiveStepId(null);
+        return prevSteps;
+      }
 
-    // Quality check
-    if (regularSteps.length === 0) {
-      dndWarn('Cannot reorder: no regular steps available');
-      setActiveStepId(null);
-      return;
-    }
+      // Quality check
+      if (regularSteps.length === 0) {
+        dndWarn('Cannot reorder: no regular steps available');
+        setActiveStepId(null);
+        return prevSteps;
+      }
 
-    const newRegularSteps = arrayMove(regularSteps, draggedIndex, targetIndex);
-    
-    // Quality check
-    if (newRegularSteps.length !== regularSteps.length) {
-      dndError('Step reorder error: length mismatch', { 
-        original: regularSteps.length, 
-        reordered: newRegularSteps.length 
-      });
-      setActiveStepId(null);
-      return;
-    }
+      const newRegularSteps = arrayMove(regularSteps, draggedIndex, targetIndex);
+      
+      // Quality check
+      if (newRegularSteps.length !== regularSteps.length) {
+        dndError('Step reorder error: length mismatch', { 
+          original: regularSteps.length, 
+          reordered: newRegularSteps.length 
+        });
+        setActiveStepId(null);
+        return prevSteps;
+      }
 
-    dndLog('Reordering steps:', { from: draggedIndex, to: targetIndex });
-    setSteps([...newRegularSteps, ...applicationSteps]);
-    setActiveStepId(null);
+      dndLog('Reordering steps:', { from: draggedIndex, to: targetIndex });
+      setActiveStepId(null);
+      return [...newRegularSteps, ...applicationSteps];
+    });
   };
 
   const handleStepDragCancel = () => {
@@ -798,30 +811,54 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   };
 
   const addElement = (stepId: string, type: ElementType) => {
-    // Prevent adding a card element if one already exists
-    if (isCardElement(type) && hasCardElement(stepId)) {
-      return;
-    }
+    // Use functional state update to ensure we're working with latest state
+    setSteps(prevSteps => {
+      // Check if card element already exists using current state
+      const step = prevSteps.find(s => s.id === stepId);
+      if (!step) {
+        console.warn('[addElement] Step not found:', stepId);
+        return prevSteps;
+      }
 
-    const newElement: Element = {
-      id: crypto.randomUUID(),
-      type,
-      config: getDefaultElementConfig(type),
-    };
+      // Prevent adding a card element if one already exists
+      if (isCardElement(type)) {
+        if (step.isApplicationStep) {
+          const hasAppCard = step.elements.some(el => el.type === APPLICATION_CARD_TYPE);
+          if (hasAppCard) {
+            console.log('[addElement] Application card already exists, skipping');
+            return prevSteps;
+          }
+        } else {
+          const hasCard = step.elements.some(el => CARD_ELEMENT_TYPES.includes(el.type));
+          if (hasCard) {
+            console.log('[addElement] Card element already exists, skipping');
+            return prevSteps;
+          }
+        }
+      }
 
-    // Ensure the step is expanded before adding the element
-    if (expandedStepId !== stepId) {
-      setExpandedStepId(stepId);
-    }
+      const newElement: Element = {
+        id: crypto.randomUUID(),
+        type,
+        config: getDefaultElementConfig(type),
+      };
 
-    setSteps(steps.map(step =>
-      step.id === stepId
-        ? { ...step, elements: [...step.elements, newElement] }
-        : step
-    ));
-    
-    // Set the newly added element ID for scroll animation
-    setNewlyAddedElementId(newElement.id);
+      console.log('[addElement] Adding element:', { type, stepId, elementId: newElement.id });
+
+      // Ensure the step is expanded before adding the element
+      if (expandedStepId !== stepId) {
+        setExpandedStepId(stepId);
+      }
+
+      // Set the newly added element ID for scroll animation
+      setNewlyAddedElementId(newElement.id);
+
+      return prevSteps.map(step =>
+        step.id === stepId
+          ? { ...step, elements: [...step.elements, newElement] }
+          : step
+      );
+    });
   };
 
   // Scroll to newly added element
@@ -1009,7 +1046,35 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     ));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Get the absolute latest steps from ref to ensure we have all current data
+    const latestSteps = stepsRef.current;
+    
+    // Validate that we have steps
+    if (!latestSteps || latestSteps.length === 0) {
+      setSystemMessage({
+        isOpen: true,
+        title: 'Cannot Save',
+        message: 'Please add at least one step before saving.',
+        instructions: ['Add a step using the "Add Step" button.'],
+      });
+      return;
+    }
+    
+    // Validate that all steps have valid structure
+    const invalidSteps = latestSteps.filter(step => !step.id || !step.elements);
+    if (invalidSteps.length > 0) {
+      console.error('[handleSave] Found invalid steps:', invalidSteps);
+      setSystemMessage({
+        isOpen: true,
+        title: 'Save Error',
+        message: 'Some steps are invalid. Please refresh and try again.',
+        instructions: ['If the problem persists, check the browser console for details.'],
+      });
+      return;
+    }
+    
+    // Build prototype with current state values (ensuring we capture the latest steps)
     const prototype: Prototype = {
       id: editingPrototype?.id || crypto.randomUUID(),
       name,
@@ -1017,11 +1082,163 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       primaryColor,
       logoUrl: logoUploadMode === 'url' ? logoUrl : logoFile ? logoUrl : editingPrototype?.logoUrl,
       logoUploadMode,
-      steps,
+      steps: latestSteps, // Use ref to ensure we have the absolute latest state
       createdAt: editingPrototype?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    onSave(prototype);
+    
+    console.log('[handleSave] Saving prototype with', latestSteps.length, 'steps');
+    console.log('[handleSave] Step IDs:', latestSteps.map(s => ({ id: s.id, name: s.name || 'Unnamed', elementsCount: s.elements?.length || 0 })));
+    
+    // Log all elements in all steps for verification
+    let totalElements = 0;
+    latestSteps.forEach((step, stepIndex) => {
+      const elementsCount = step.elements?.length || 0;
+      totalElements += elementsCount;
+      
+      const imageOnlyCards = step.elements.filter(el => el.type === 'image_only_card');
+      if (imageOnlyCards.length > 0) {
+        console.log(`[handleSave] Step ${stepIndex} (${step.name || 'Unnamed'}) has ${imageOnlyCards.length} image_only_card element(s):`, 
+          imageOnlyCards.map(el => ({ id: el.id, optionsCount: el.config?.options?.length || 0 }))
+        );
+      }
+      console.log(`[handleSave] Step ${stepIndex} (${step.name || 'Unnamed'}): ${elementsCount} elements`, 
+        step.elements.map(el => ({ type: el.type, id: el.id }))
+      );
+    });
+    
+    console.log(`[handleSave] Total: ${latestSteps.length} steps, ${totalElements} elements`);
+    
+    // When editing an existing prototype, save directly to ensure latest state is persisted
+    if (editingPrototype?.id) {
+      try {
+        // Save directly with current state to ensure all steps are included
+        console.log('[handleSave] Calling updatePrototype...');
+        const saveStartTime = Date.now();
+        const result = await updatePrototype(editingPrototype.id, {
+          name: prototype.name,
+          description: prototype.description,
+          primaryColor: prototype.primaryColor,
+          logoUrl: prototype.logoUrl,
+          logoUploadMode: prototype.logoUploadMode,
+          steps: prototype.steps, // Explicitly use current steps state
+        });
+        const saveEndTime = Date.now();
+        console.log(`[handleSave] updatePrototype completed in ${saveEndTime - saveStartTime}ms`);
+        
+        console.log('[handleSave] Save result:', result.success ? 'Success' : 'Failed', result.error);
+        if (result.success && result.data) {
+          const savedSteps = result.data.steps || [];
+          console.log('[handleSave] Saved prototype has', savedSteps.length, 'steps');
+          
+          // Verify all steps and elements were saved correctly
+          let savedTotalElements = 0;
+          savedSteps.forEach((step, stepIndex) => {
+            const elementsCount = step.elements?.length || 0;
+            savedTotalElements += elementsCount;
+            
+            const imageOnlyCards = step.elements.filter(el => el.type === 'image_only_card');
+            if (imageOnlyCards.length > 0) {
+              console.log(`[handleSave] Verified: Step ${stepIndex} (${step.name || 'Unnamed'}) has ${imageOnlyCards.length} image_only_card element(s) saved`);
+            }
+            console.log(`[handleSave] Verified: Step ${stepIndex} (${step.name || 'Unnamed'}) has ${elementsCount} elements saved`);
+          });
+          
+          console.log(`[handleSave] Verification: Saved ${savedSteps.length} steps with ${savedTotalElements} total elements`);
+          
+          // Verify counts match
+          if (savedSteps.length !== latestSteps.length) {
+            console.warn(`[handleSave] Warning: Step count mismatch! Expected ${latestSteps.length}, saved ${savedSteps.length}`);
+          }
+          if (savedTotalElements !== totalElements) {
+            console.warn(`[handleSave] Warning: Element count mismatch! Expected ${totalElements}, saved ${savedTotalElements}`);
+          }
+          
+          // Use the saved prototype data for the callback
+          // Call onSave which will handle navigation
+          console.log('[handleSave] Calling onSave callback to navigate...');
+          try {
+            await onSave(result.data);
+            console.log('[handleSave] onSave completed successfully');
+          } catch (error) {
+            console.error('[handleSave] Error in onSave callback:', error);
+            // Even if onSave fails, we've already saved successfully, so navigate manually
+            // Note: We can't navigate directly here since we don't have access to navigate
+            // The onSave callback should handle navigation
+          }
+        } else {
+          // Check if it's a storage quota error
+          const errorMessage = result.error || 'Unknown error';
+          if (errorMessage.includes('quota') || errorMessage.includes('QuotaExceeded')) {
+            setSystemMessage({
+              isOpen: true,
+              title: 'Storage Full',
+              message: 'Your browser storage is full. Unable to save the prototype.',
+              instructions: [
+                'Delete some existing prototypes to free up space',
+                'Or clear your browser\'s localStorage',
+                'Images are being compressed automatically, but you may have too many prototypes stored'
+              ],
+            });
+            return; // Don't proceed with save
+          }
+          
+          // Fallback to using the prototype we built if save failed
+          console.error('[handleSave] Error saving prototype:', result.error);
+          console.error('[handleSave] Attempted to save steps:', latestSteps.length);
+          console.error('[handleSave] Steps data:', JSON.stringify(latestSteps, null, 2).substring(0, 500));
+          
+          setSystemMessage({
+            isOpen: true,
+            title: 'Save Failed',
+            message: `Failed to save prototype: ${errorMessage}`,
+            instructions: ['Please try again or check the browser console for more details.'],
+          });
+        }
+      } catch (error) {
+        console.error('[handleSave] Exception in handleSave:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[handleSave] Error details:', errorMessage);
+        console.error('[handleSave] Stack trace:', error instanceof Error ? error.stack : 'N/A');
+        
+        // Check if it's a storage quota error
+        if (errorMessage.includes('quota') || errorMessage.includes('QuotaExceeded') || error instanceof DOMException) {
+          setSystemMessage({
+            isOpen: true,
+            title: 'Storage Full',
+            message: 'Your browser storage is full. Unable to save the prototype.',
+            instructions: [
+              'Delete some existing prototypes to free up space',
+              'Or clear your browser\'s localStorage',
+              'Images are being compressed automatically, but you may have too many prototypes stored'
+            ],
+          });
+          return; // Don't proceed with save
+        }
+        
+        setSystemMessage({
+          isOpen: true,
+          title: 'Save Failed',
+          message: `An error occurred while saving: ${errorMessage}`,
+          instructions: ['Please try again or check the browser console for more details.'],
+        });
+      }
+    } else {
+      // For new prototypes, save normally via onSave callback
+      console.log('[handleSave] Saving new prototype via onSave callback...');
+      try {
+        await onSave(prototype);
+        console.log('[handleSave] New prototype saved, navigation should have occurred');
+      } catch (error) {
+        console.error('[handleSave] Error saving new prototype:', error);
+        setSystemMessage({
+          isOpen: true,
+          title: 'Save Error',
+          message: 'An error occurred while saving the prototype.',
+          instructions: ['Please try again or check the browser console for details.'],
+        });
+      }
+    }
   };
 
   const canSave = name && description && steps.length > 0;

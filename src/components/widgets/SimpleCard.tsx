@@ -68,7 +68,7 @@ export default function SimpleCard({ title, selected, onSelect, primaryColor, di
       }}
     >
       <div className="flex-1 max-h-14 flex justify-start items-end gap-2.5">
-        <div className={`flex-1 max-h-14 text-left text-gray-600 text-lg font-normal font-['Poppins'] leading-6 tracking-tight ${disabled ? 'text-gray-400' : ''}`}>
+        <div className={`flex-1 max-h-14 text-left text-zinc-700 text-base font-normal font-['Poppins'] leading-6 tracking-tight ${disabled ? 'text-gray-400' : ''}`}>
           {title || 'Option'}
         </div>
       </div>
