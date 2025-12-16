@@ -23,6 +23,45 @@ export default function ActivityLog() {
 
   useEffect(() => {
     loadLoginHistory();
+
+    // Listen for storage changes (localStorage updates)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'login_history' || e.key === null) {
+        // Reload when login_history changes or any storage change occurs
+        loadLoginHistory();
+      }
+    };
+
+    // Listen for custom login event
+    const handleLoginEvent = () => {
+      loadLoginHistory();
+    };
+
+    // Listen for window focus (when user returns to tab)
+    const handleFocus = () => {
+      loadLoginHistory();
+    };
+
+    // Listen for visibility change (when tab becomes visible)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadLoginHistory();
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('loginLogged', handleLoginEvent);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('loginLogged', handleLoginEvent);
+    };
   }, []);
 
   const handleRefresh = async () => {

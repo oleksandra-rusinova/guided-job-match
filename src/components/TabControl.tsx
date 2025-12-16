@@ -20,7 +20,7 @@ export default function TabControl({
 }: TabControlProps) {
   const isFullWidth = className.includes('w-full');
   return (
-    <div className={`${isFullWidth ? 'flex gap-1' : 'inline-flex'} rounded-lg bg-gray-200 p-1 ${className}`}>
+    <div className={`${isFullWidth ? 'flex gap-1' : 'inline-flex'} rounded-lg bg-gray-100 p-1 ${className}`}>
       {options.map((option, index) => (
         <button
           key={option.value}

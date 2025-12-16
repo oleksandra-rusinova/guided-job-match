@@ -12,7 +12,7 @@ import TemplateSelector from './components/TemplateSelector';
 import Login from './components/Login';
 import ActivityLog from './components/ActivityLog';
 import { LoadingProvider, useLoading } from './contexts/LoadingContext';
-import { ModalProvider, useModal } from './contexts/ModalContext';
+import { ModalProvider } from './contexts/ModalContext';
 import Loader from './components/Loader';
 
 // Protected Route Component
@@ -35,7 +35,6 @@ function AppContent() {
   // Use Realtime hook for prototypes - automatically updates on changes
   const { prototypes, updatePrototypeInState, removePrototypeFromState, isLoading } = useRealtimePrototypes();
   const { withLoading } = useLoading();
-  const { confirm } = useModal();
 
   // Load prototype templates on mount
   useEffect(() => {
@@ -76,15 +75,10 @@ function AppContent() {
   };
 
   const handleDeletePrototype = async (id: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this prototype?',
-    });
-    if (confirmed) {
-      await withLoading(() => deletePrototype(id));
-      // Update local state immediately for instant UI feedback
-      removePrototypeFromState(id);
-      // Realtime will also update, but local state update provides instant feedback
-    }
+    await withLoading(() => deletePrototype(id));
+    // Update local state immediately for instant UI feedback
+    removePrototypeFromState(id);
+    // Realtime will also update, but local state update provides instant feedback
   };
 
   const handleEditPrototype = (id: string) => {

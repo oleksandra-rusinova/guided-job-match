@@ -19,7 +19,6 @@ import TemplateEditor from './TemplateEditor';
 import SystemMessageModal from './SystemMessageModal';
 import Tabs from './Tabs';
 import Tooltip from './Tooltip';
-import { useModal } from '../contexts/ModalContext';
 
 interface TemplatesPageProps {
   onBack: () => void;
@@ -32,12 +31,12 @@ export default function TemplatesPage({
   onEditQuestionTemplate: _onEditQuestionTemplate,
   onEditPrototypeTemplate: _onEditPrototypeTemplate,
 }: TemplatesPageProps) {
-  const { confirm } = useModal();
   const [questionTemplates, setQuestionTemplates] = useState<QuestionTemplate[]>([]);
   const [prototypeTemplates, setPrototypeTemplates] = useState<PrototypeTemplate[]>([]);
   const [applicationStepTemplates, setApplicationStepTemplates] = useState<ApplicationStepTemplate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTabIndex, setActiveTabIndex] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<{
     type: 'question' | 'prototype' | 'applicationStep';
     template: QuestionTemplate | PrototypeTemplate | ApplicationStepTemplate;
@@ -84,6 +83,7 @@ export default function TemplatesPage({
   }, []);
 
   const loadTemplates = async () => {
+    setIsLoading(true);
     try {
       const [questions, prototypes, applications] = await Promise.all([
         getQuestionTemplates(),
@@ -95,6 +95,8 @@ export default function TemplatesPage({
       setApplicationStepTemplates(applications);
     } catch (error) {
       console.error('Error loading templates:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -128,35 +130,25 @@ export default function TemplatesPage({
 
   const handleDeleteTemplate = async (id: string) => {
     const type = activeTabIndex === 0 ? 'question' : activeTabIndex === 1 ? 'prototype' : 'applicationStep';
-    const confirmMessage = type === 'question' 
-      ? 'Are you sure you want to delete this question template?'
-      : type === 'prototype'
-      ? 'Are you sure you want to delete this prototype template?'
-      : 'Are you sure you want to delete this application template?';
     
-    const confirmed = await confirm({
-      message: confirmMessage,
-    });
-    if (confirmed) {
-      try {
-        if (type === 'question') {
-          await deleteQuestionTemplate(id);
-        } else if (type === 'prototype') {
-          await deletePrototypeTemplate(id);
-        } else {
-          await deleteApplicationStepTemplate(id);
-        }
-        await loadTemplates();
-        if (selectedTemplate?.template.id === id) {
-          setSelectedTemplate(null);
-        }
-      } catch (error) {
-        console.error('Error deleting template:', error);
-        setSystemMessage({
-          isOpen: true,
-          message: 'Failed to delete template. Please try again.',
-        });
+    try {
+      if (type === 'question') {
+        await deleteQuestionTemplate(id);
+      } else if (type === 'prototype') {
+        await deletePrototypeTemplate(id);
+      } else {
+        await deleteApplicationStepTemplate(id);
       }
+      await loadTemplates();
+      if (selectedTemplate?.template.id === id) {
+        setSelectedTemplate(null);
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      setSystemMessage({
+        isOpen: true,
+        message: 'Failed to delete template. Please try again.',
+      });
     }
   };
 
@@ -348,36 +340,25 @@ export default function TemplatesPage({
 
   const handleClearAllTemplates = async () => {
     const type = activeTabIndex === 0 ? 'question' : activeTabIndex === 1 ? 'prototype' : 'applicationStep';
-    const confirmMessage = type === 'question'
-      ? 'Are you sure you want to delete ALL question templates? This cannot be undone.'
-      : type === 'prototype'
-      ? 'Are you sure you want to delete ALL prototype templates? This cannot be undone.'
-      : 'Are you sure you want to delete ALL application templates? This cannot be undone.';
-    
-    const confirmed = await confirm({
-      message: confirmMessage,
-    });
-    if (confirmed) {
-      try {
-        if (type === 'question') {
-          await saveAllToStore('questionTemplates', []);
-          localStorage.setItem('questionTemplates', '[]');
-        } else if (type === 'prototype') {
-          await saveAllToStore('prototypeTemplates', []);
-          localStorage.setItem('prototypeTemplates', '[]');
-        } else {
-          await saveAllToStore('applicationStepTemplates', []);
-          localStorage.setItem('applicationStepTemplates', '[]');
-        }
-        await loadTemplates();
-        setSelectedTemplate(null);
-      } catch (error) {
-        console.error('Error clearing templates:', error);
-        setSystemMessage({
-          isOpen: true,
-          message: 'Failed to clear templates. Please try again.',
-        });
+    try {
+      if (type === 'question') {
+        await saveAllToStore('questionTemplates', []);
+        localStorage.setItem('questionTemplates', '[]');
+      } else if (type === 'prototype') {
+        await saveAllToStore('prototypeTemplates', []);
+        localStorage.setItem('prototypeTemplates', '[]');
+      } else {
+        await saveAllToStore('applicationStepTemplates', []);
+        localStorage.setItem('applicationStepTemplates', '[]');
       }
+      await loadTemplates();
+      setSelectedTemplate(null);
+    } catch (error) {
+      console.error('Error clearing templates:', error);
+      setSystemMessage({
+        isOpen: true,
+        message: 'Failed to clear templates. Please try again.',
+      });
     }
   };
 
@@ -457,7 +438,35 @@ export default function TemplatesPage({
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-0">
-            {filteredTemplates.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative w-8 h-8">
+                    <svg
+                      className="animate-spin"
+                      style={{ animation: 'spin 1s linear infinite' }}
+                      width="32"
+                      height="32"
+                      viewBox="0 0 32 32"
+                    >
+                      <circle
+                        cx="16"
+                        cy="16"
+                        r="14"
+                        fill="none"
+                        stroke="#6633FF"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeDasharray="66"
+                        strokeDashoffset="16.5"
+                        transform="rotate(-90 16 16)"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-500">Loading templates...</p>
+                </div>
+              </div>
+            ) : filteredTemplates.length === 0 ? (
               <div className="p-4 text-center">
                 <p className="text-sm text-gray-500">
                   {searchQuery ? 'No templates match your search' : 'No templates yet'}

@@ -1,7 +1,25 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { GripVertical, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Element } from '../types';
-import { useModal } from '../contexts/ModalContext';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableCardOption } from './SortableCardOption';
+import { dndLog, dndWarn } from '../utils/dndDebug';
 
 type OptionType = NonNullable<Element['config']['options']>[number];
 import SelectionConfiguration from './SelectionConfiguration';
@@ -16,6 +34,7 @@ interface CardEditorProps {
   element: Element;
   stepIndex: number;
   onUpdateElement: (stepIndex: number, elementId: string, updates: Partial<Element>) => void;
+  onDeleteElement?: (stepIndex: number, elementId: string) => void | Promise<void>;
   primaryColor: string;
   showSelectionConfig?: boolean;
   disableAddCard?: boolean;
@@ -24,21 +43,30 @@ interface CardEditorProps {
 export default function CardEditor({ 
   element, 
   stepIndex, 
-  onUpdateElement, 
+  onUpdateElement,
+  onDeleteElement,
   primaryColor,
   showSelectionConfig = true,
   disableAddCard = false
 }: CardEditorProps) {
-  const dragCardIdRef = useRef<string | null>(null);
-  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
-  const [dropTargetCardId, setDropTargetCardId] = useState<string | null>(null);
-  const [dropTargetCardPosition, setDropTargetCardPosition] = useState<'above' | 'below' | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [newlyAddedCardOptionId, setNewlyAddedCardOptionId] = useState<string | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const autoExpandedElementIdsRef = useRef<Set<string>>(new Set());
   // Track latest element config to avoid stale closures in SelectionConfiguration callbacks
   const elementConfigRef = useRef(element.config);
-  const { confirm } = useModal();
+
+  // Configure sensors with activation constraint to prevent accidental drags
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before drag starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
   // Update ref whenever element changes
   useEffect(() => {
@@ -99,70 +127,90 @@ export default function CardEditor({
   };
 
   const deleteCardOption = async (optionId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this card option?',
-    });
-    if (confirmed) {
-      const options = (element.config.options || []).filter((opt: OptionType) => opt.id !== optionId);
+    // Sub-items (card options) delete immediately without confirmation
+    const options = (element.config.options || []).filter((opt: OptionType) => opt.id !== optionId);
+    
+    // Check if element should be deleted when it has no options left
+    // Only delete elements that require options (cards, checkboxes, dropdown)
+    const elementTypesRequiringOptions: Element['type'][] = [
+      'simple_cards',
+      'image_cards',
+      'image_only_card',
+      'advanced_cards',
+      'application_card',
+      'checkboxes',
+      'dropdown'
+    ];
+    
+    const shouldAutoDelete = elementTypesRequiringOptions.includes(element.type) && options.length === 0;
+    
+    if (shouldAutoDelete && onDeleteElement) {
+      // Auto-delete the element when all options are removed
+      console.log('[DELETE CARD OPTION] Auto-deleting element because it has no options left:', {
+        elementId: element.id,
+        elementType: element.type,
+        stepIndex
+      });
+      await onDeleteElement(stepIndex, element.id);
+    } else {
+      // Update element with remaining options
       onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, optionId: string) => {
-    dragCardIdRef.current = optionId;
-    setDraggedCardId(optionId);
-    try {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', optionId);
-    } catch {
-      // Ignore errors
-    }
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    setActiveId(active.id as string);
+    dndLog('Drag started:', active.id);
   };
 
-  const handleDragOver = (e: React.DragEvent, optionId: string) => {
-    e.preventDefault();
-    try { 
-      e.dataTransfer.dropEffect = 'move'; 
-    } catch {
-      // Ignore errors
-    }
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
     
-    if (!dragCardIdRef.current || dragCardIdRef.current === optionId) {
-      setDropTargetCardId(null);
-      setDropTargetCardPosition(null);
+    dndLog('Drag ended:', { activeId: active.id, overId: over?.id });
+
+    if (!over || active.id === over.id) {
+      setActiveId(null);
       return;
     }
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mouseY = e.clientY;
-    const elementCenterY = rect.top + rect.height / 2;
+    const options = element.config.options || [];
+    const oldIndex = options.findIndex((o: OptionType) => o.id === active.id);
+    const newIndex = options.findIndex((o: OptionType) => o.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      dndWarn('Invalid indices:', { oldIndex, newIndex });
+      setActiveId(null);
+      return;
+    }
+
+    // Quality check: ensure we have valid options before reordering
+    if (options.length === 0) {
+      dndWarn('Cannot reorder: no options available');
+      setActiveId(null);
+      return;
+    }
+
+    const newOptions = arrayMove(options, oldIndex, newIndex);
     
-    setDropTargetCardId(optionId);
-    setDropTargetCardPosition(mouseY < elementCenterY ? 'above' : 'below');
+    // Quality check: verify the reorder resulted in correct length
+    if (newOptions.length !== options.length) {
+      dndError('Reorder error: length mismatch', { 
+        original: options.length, 
+        reordered: newOptions.length 
+      });
+      setActiveId(null);
+      return;
+    }
+
+    dndLog('Reordering:', { from: oldIndex, to: newIndex, total: newOptions.length });
+    onUpdateElement(stepIndex, element.id, { config: { ...element.config, options: newOptions } });
+    setActiveId(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetOptionId: string) => {
-    e.preventDefault();
-    setDropTargetCardId(null);
-    setDropTargetCardPosition(null);
-    const draggedId = dragCardIdRef.current || e.dataTransfer.getData('text/plain');
-    const options = [...(element.config.options || [])];
-    const fromIndex = options.findIndex((o: OptionType) => o.id === draggedId);
-    const toIndex = options.findIndex((o: OptionType) => o.id === targetOptionId);
-    
-    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
-    
-    const [moved] = options.splice(fromIndex, 1);
-    options.splice(toIndex, 0, moved);
-    onUpdateElement(stepIndex, element.id, { config: { ...element.config, options } });
-    dragCardIdRef.current = null;
-  };
-
-  const handleDragEnd = () => {
-    dragCardIdRef.current = null;
-    setDraggedCardId(null);
-    setDropTargetCardId(null);
-    setDropTargetCardPosition(null);
+  const handleDragCancel = () => {
+    dndLog('Drag cancelled');
+    setActiveId(null);
   };
 
   const updateOptionTitle = (optionId: string, title: string) => {
@@ -346,54 +394,45 @@ export default function CardEditor({
         </div>
       ) : (
         <>
-          {/* Card Options */}
-          {options.map((opt: OptionType, idx: number) => {
-            const canDrag = options.length > 1;
-            return (
-              <React.Fragment key={opt.id}>
-                {/* Drop indicator line above */}
-                {dropTargetCardId === opt.id && dropTargetCardPosition === 'above' && draggedCardId && draggedCardId !== opt.id && (
-                  <div 
-                    className="h-0.5 my-1 transition-all pointer-events-none"
-                    style={{ backgroundColor: '#4D3EE0' }}
-                  />
-                )}
-                <div
-                  id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
-                  className={`border border-gray-200 rounded-lg p-3 space-y-3 transition-all ${
-                    element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'
-                  } ${
-                    draggedCardId === opt.id 
-                      ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
-                      : ''
-                  }`}
-                  style={draggedCardId === opt.id ? { borderRadius: '0.5rem' } : {}}
-                  draggable={false}
-                  onDragStart={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onDragOver={canDrag ? (e) => handleDragOver(e, opt.id) : undefined}
-                  onDrop={canDrag ? (e) => handleDrop(e, opt.id) : undefined}
-                >
-          <div className="flex items-center gap-2">
-            {canDrag && (
-              <span
-                draggable={true}
-                onDragStart={(e) => {
-                  e.stopPropagation();
-                  handleDragStart(e, opt.id);
-                }}
-                onDragEnd={(e) => {
-                  e.stopPropagation();
-                  handleDragEnd();
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                className="inline-flex cursor-grab active:cursor-grabbing"
-              >
-                <GripVertical size={16} className="text-gray-400 hover:text-gray-600 pointer-events-none" />
-              </span>
-            )}
+          {/* Card Options with DnD */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext
+              items={options.map((o: OptionType) => o.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {options.map((opt: OptionType, idx: number) => {
+                const canDrag = options.length > 1;
+                return (
+                  <SortableCardOption
+                    key={opt.id}
+                    id={opt.id}
+                    disabled={!canDrag}
+                    className="mb-2"
+                  >
+                    {({ attributes, listeners, isDragging }) => (
+                      <div
+                        id={element.type === 'application_card' ? `card-option-${opt.id}` : undefined}
+                        className={`border border-gray-200 rounded-lg p-3 space-y-3 transition-all ${
+                          element.type === 'application_card' ? 'bg-gray-100' : 'bg-white'
+                        } ${isDragging ? 'opacity-50' : ''}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {canDrag && (
+                            <span
+                              {...attributes}
+                              {...listeners}
+                              className="inline-flex cursor-grab active:cursor-grabbing touch-none"
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <GripVertical size={16} className="text-gray-400 hover:text-gray-600 pointer-events-none" />
+                            </span>
+                          )}
             {element.type !== 'image_only_card' && element.type !== 'advanced_cards' && element.type !== 'application_card' && (
               <EditorField
                 value={opt.title || ''}
@@ -432,7 +471,12 @@ export default function CardEditor({
               </button>
             )}
             <button
-              onClick={async () => await deleteCardOption(opt.id)}
+              type="button"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await deleteCardOption(opt.id);
+              }}
               className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
               <Trash2 size={16} />
@@ -729,17 +773,25 @@ export default function CardEditor({
               </div>
             </div>
           )}
-        </div>
-                {/* Drop indicator line below */}
-                {dropTargetCardId === opt.id && dropTargetCardPosition === 'below' && draggedCardId && draggedCardId !== opt.id && (
-                  <div 
-                    className="h-0.5 my-1 transition-all pointer-events-none"
-                    style={{ backgroundColor: '#4D3EE0' }}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
+                      </div>
+                    )}
+                  </SortableCardOption>
+                );
+              })}
+            </SortableContext>
+            <DragOverlay>
+              {activeId ? (
+                <div className="border border-blue-400 rounded-lg p-3 bg-white shadow-lg opacity-90 rotate-2">
+                  <div className="flex items-center gap-2">
+                    <GripVertical size={16} className="text-gray-400" />
+                    <span className="text-sm font-medium text-gray-600">
+                      {options.find((o: OptionType) => o.id === activeId)?.title || 'Card'}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
           {/* Add Card Button */}
           {!disableAddCard && !(element.type === 'checkboxes' && (element.config.options || []).length >= 1) && (

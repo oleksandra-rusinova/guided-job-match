@@ -1,7 +1,7 @@
 import { useLoading } from '../contexts/LoadingContext';
 
 function ArcSpinner({ size = 48 }: { size?: number }) {
-  const strokeWidth = size * 0.15;
+  const strokeWidth = size * 0.08;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const arcLength = circumference * 0.75; // 75% of the circle for the arc
