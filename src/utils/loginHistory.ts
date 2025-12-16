@@ -29,6 +29,8 @@ const saveLoginHistoryLocal = (email: string, timestamp: string): void => {
   // Keep only last 100 entries locally
   const limitedHistory = history.slice(0, 100);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(limitedHistory));
+  // Dispatch custom event to notify ActivityLog component
+  window.dispatchEvent(new CustomEvent('loginLogged'));
 };
 
 // Supabase functions
@@ -60,6 +62,8 @@ export const logLogin = async (email: string): Promise<{ success: boolean; error
       return { success: false, error: error.message };
     }
 
+    // Dispatch custom event to notify ActivityLog component
+    window.dispatchEvent(new CustomEvent('loginLogged'));
     return { success: true };
   } catch (error: any) {
     console.error('Error logging login:', error);

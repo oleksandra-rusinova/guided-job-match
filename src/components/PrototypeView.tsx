@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Trash2, Plus, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
 import { useLoading } from '../contexts/LoadingContext';
-import { useModal } from '../contexts/ModalContext';
 
 function ArcSpinner({ size = 48, color = '#6633FF' }: { size?: number; color?: string }) {
   const strokeWidth = size * 0.15;
@@ -79,7 +78,6 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
 
   // Use Realtime hook to get prototype and listen for changes
   const { prototype, isConnected, presenceUsers, setEditing, updatePrototypeInState, isLoading } = useRealtimePrototype(prototypeId, userId, userName, initialPrototype);
-  const { confirm } = useModal();
   
   console.log('PrototypeView state:', { isLoading, prototype: prototype ? 'exists' : 'null', prototypeId });
   
@@ -135,17 +133,20 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     if (prototype && prototype.steps) {
       // Only sync if editor is closed
       if (!isEditorOpen) {
-        // Check if the prototype steps are actually different from current state
-        const currentStepsStr = JSON.stringify(stepsState);
-        const newStepsStr = JSON.stringify(prototype.steps);
-        if (currentStepsStr !== newStepsStr) {
-          console.log('Syncing stepsState from prototype update');
-          setStepsState(prototype.steps);
-          setOriginalStepsState(prototype.steps);
-        }
+        // Use functional update to compare with current state without including it in dependencies
+        setStepsState(prev => {
+          const currentStepsStr = JSON.stringify(prev);
+          const newStepsStr = JSON.stringify(prototype.steps);
+          if (currentStepsStr !== newStepsStr) {
+            console.log('Syncing stepsState from prototype update');
+            setOriginalStepsState(prototype.steps);
+            return prototype.steps;
+          }
+          return prev;
+        });
       }
     }
-  }, [prototype, isEditorOpen, isManualSaving, justSaved, stepsState]);
+  }, [prototype, isEditorOpen, isManualSaving, justSaved]);
 
   // Store original steps state when editor opens
   useEffect(() => {
@@ -167,9 +168,44 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
     enabled: isEditorOpen && !!prototype,
     debounceMs: 2000, // 2 second debounce for step edits
     onSave: (savedPrototype) => {
-      // Update local state
+      // Update parent state but don't overwrite local stepsState
+      // Local state is already correct (includes deletions), so we only update parent
+      // to keep realtime sync in sync, but preserve local editor state
       updatePrototypeInState(savedPrototype);
-      setStepsState(savedPrototype.steps);
+      
+      // Only update stepsState if it's different (to handle external updates)
+      // But don't overwrite if we have local changes that haven't been saved yet
+      setStepsState(prev => {
+        const currentHash = JSON.stringify(prev);
+        const savedHash = JSON.stringify(savedPrototype.steps);
+        
+        // Only update if the saved state is different AND matches what we expect
+        // This prevents overwriting local deletions with stale server state
+        if (currentHash !== savedHash) {
+          // Verify that saved state doesn't have more items than current (which would indicate restoration)
+          const currentElementCount = prev.reduce((sum, step) => sum + step.elements.length, 0);
+          const savedElementCount = savedPrototype.steps.reduce((sum, step) => sum + step.elements.length, 0);
+          
+          if (savedElementCount > currentElementCount) {
+            console.warn('[AUTO-SAVE] WARNING: Saved state has more elements than current state! Not updating to prevent restoring deleted items.', {
+              currentElementCount,
+              savedElementCount,
+              currentStepCount: prev.length,
+              savedStepCount: savedPrototype.steps.length
+            });
+            return prev; // Don't overwrite with state that has more items
+          }
+          
+          console.log('[AUTO-SAVE] Updating stepsState from saved prototype', {
+            currentStepCount: prev.length,
+            savedStepCount: savedPrototype.steps.length,
+            currentElementCount,
+            savedElementCount
+          });
+          return savedPrototype.steps;
+        }
+        return prev;
+      });
       console.log('Auto-saved prototype steps');
     },
   });
@@ -386,17 +422,94 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
   }, [newlyAddedElementId, isEditorOpen]);
 
   const deleteElement = async (stepId: string, elementId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this element?',
-    });
-    if (confirmed) {
-      setStepsState(prev =>
-        prev.map(step =>
-          step.id === stepId
-            ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
-            : step
-        )
-      );
+    const DEBUG_DELETION = true; // Set to false to disable debug logs
+    
+    try {
+      // Find the element to check its type
+      const step = stepsState.find(s => s.id === stepId);
+      const element = step?.elements.find(el => el.id === elementId);
+      
+      if (!step || !element) {
+        console.error('[DELETE PrototypeView] Element not found:', { stepId, elementId, stepExists: !!step, elementExists: !!element });
+        return;
+      }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE PrototypeView] Starting deletion:', { 
+          stepId, 
+          elementId, 
+          elementType: element.type,
+          currentStepsCount: stepsState.length,
+          currentElementsCount: step.elements.length 
+        });
+      }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE PrototypeView] Updating state...');
+      }
+      
+      // Update steps immutably - remove element by stable id
+        setStepsState(prev => {
+          const updatedSteps = prev.map(step =>
+            step.id === stepId
+              ? { 
+                  ...step, 
+                  elements: step.elements.filter(el => el.id !== elementId),
+                  // Remove tag dependencies that reference the deleted element
+                  tags: step.tags?.filter(tag => tag.elementId !== elementId)
+                }
+              : step
+          );
+          
+          if (DEBUG_DELETION) {
+            const updatedStep = updatedSteps.find(s => s.id === stepId);
+            console.log('[DELETE PrototypeView] State updated:', {
+              beforeCount: prev.find(s => s.id === stepId)?.elements.length,
+              afterCount: updatedStep?.elements.length,
+              elementStillExists: updatedStep?.elements.some(el => el.id === elementId),
+              deletedElementId: elementId
+            });
+          }
+          
+          // Mark deletion timestamp to prevent auto-save from overwriting
+          const deletionTimestamp = Date.now();
+          if (DEBUG_DELETION) {
+            console.log('[DELETE PrototypeView] Deletion timestamp:', deletionTimestamp);
+          }
+          
+          return updatedSteps;
+        });
+        
+        // Clear related state if the deleted element was tracked
+        if (newlyAddedElementId === elementId) {
+          setNewlyAddedElementId(null);
+        }
+        // Remove from expanded card elements if it was expanded
+        setExpandedCardElements(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(elementId);
+          return newSet;
+        });
+        // Close element menu if it was open for this element's step
+        if (openElementMenuStepId === stepId) {
+          setOpenElementMenuStepId(null);
+        }
+        // Clear drag state if this element was being dragged
+        if (draggedElementId === elementId) {
+          setDraggedElementId(null);
+          setDraggedElementStepId(null);
+        }
+        if (dropTargetElementId === elementId) {
+          setDropTargetElementId(null);
+          setDropTargetElementPosition(null);
+        }
+        
+      if (DEBUG_DELETION) {
+        console.log('[DELETE PrototypeView] Deletion complete, state cleared');
+      }
+    } catch (error) {
+      console.error('[DELETE PrototypeView] Error in deleteElement:', error);
+      throw error;
     }
   };
 
@@ -894,17 +1007,23 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               };
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              // For 4+ cards, position at top instead of centering
               const containerStyle = isSplitScreen 
                 ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
                   ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+                  : numCards >= 4
+                    ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
+                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               // Use wider wrapper for 3 cards to maintain proper card width
+              // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
-                : numCards === 3
-                  ? { width: '1152px', margin: '0 auto', padding: '0' }
-                  : { width: '680px', margin: '0 auto', padding: '0' };
+                : numCards >= 4
+                  ? { width: '1152px', margin: '0', padding: '0' }
+                  : numCards === 3
+                    ? { width: '1152px', margin: '0 auto', padding: '0' }
+                    : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
                 <div key={el.id} style={containerStyle}>
@@ -977,17 +1096,23 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               };
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              // For 4+ cards, position at top instead of centering
               const containerStyle = isSplitScreen 
                 ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
                   ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+                  : numCards >= 4
+                    ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
+                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
-                : (numCards === 2 || numCards === 3 || numCards === 4)
-                  ? { width: '1152px', margin: '0 auto', padding: '0' }
-                  : { width: '680px', margin: '0 auto', padding: '0' };
+                : numCards >= 4
+                  ? { width: '1152px', margin: '0', padding: '0' }
+                  : (numCards === 2 || numCards === 3)
+                    ? { width: '1152px', margin: '0 auto', padding: '0' }
+                    : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
                 <div key={el.id} style={containerStyle}>
@@ -1168,17 +1293,23 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               };
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              // For 4+ cards, position at top instead of centering
               const containerStyle = isSplitScreen 
                 ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
                   ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+                  : numCards >= 4
+                    ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
+                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
-                : (numCards === 2 || numCards === 3 || numCards === 4)
-                  ? { width: '1152px', margin: '0 auto', padding: '0' }
-                  : { width: '680px', margin: '0 auto', padding: '0' };
+                : numCards >= 4
+                  ? { width: '1152px', margin: '0', padding: '0' }
+                  : (numCards === 2 || numCards === 3)
+                    ? { width: '1152px', margin: '0 auto', padding: '0' }
+                    : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
                 <div key={el.id} style={containerStyle}>
@@ -1257,17 +1388,23 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               };
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
+              // For 4+ cards, position at top instead of centering
               const containerStyle = isSplitScreen 
                 ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                 : hasMultipleFields 
                   ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                  : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+                  : numCards >= 4
+                    ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
+                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
               // Use wider wrapper for 2, 3, and 4 cards to fill content container width
+              // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
-                : (numCards === 2 || numCards === 3 || numCards === 4)
-                  ? { width: '1152px', margin: '0 auto', padding: '0' }
-                  : { width: '680px', margin: '0 auto', padding: '0' };
+                : numCards >= 4
+                  ? { width: '1152px', margin: '0', padding: '0' }
+                  : (numCards === 2 || numCards === 3)
+                    ? { width: '1152px', margin: '0 auto', padding: '0' }
+                    : { width: '680px', margin: '0 auto', padding: '0' };
               
               return (
                 <div key={el.id} style={containerStyle}>
@@ -1383,16 +1520,22 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
               
               // If there are multiple fields, remove all margins/padding except 24px gap between fields
               // For application steps, use special spacing logic
+              // For 4+ cards, position at top instead of centering
               const containerStyle = currentStep.isApplicationStep 
                 ? { ...baseGapStyle, ...spacingOverride, padding: '0', marginBottom: '0', display: 'block' }
                 : isSplitScreen 
                   ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block', width: '100%' }
                   : hasMultipleFields 
                     ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
-                    : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+                    : numCards >= 4
+                      ? { ...baseGapStyle, marginTop: index === 0 ? '24px' : '24px', marginBottom: '120px', padding: '0', display: 'block', alignSelf: 'flex-start' }
+                      : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // For 4+ cards, align to start (left) instead of centering
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' } 
-                : { width: '680px', margin: '0 auto', padding: '0' };
+                : numCards >= 4
+                  ? { width: '1152px', margin: '0', padding: '0' }
+                  : { width: '680px', margin: '0 auto', padding: '0' };
               
               // Use flexbox with fixed width for 1 or 2 cards, grid for others
               // In split screen mode, always use grid with 2 columns
@@ -1860,7 +2003,9 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                                   </span>
                                 </div>
                                 <button
+                                  type="button"
                                   onClick={async (e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     await deleteElement(currentStep.id, el.id);
                                   }}
@@ -1875,6 +2020,10 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                                   element={el}
                                   stepIndex={currentPage}
                                   onUpdateElement={updateElement}
+                                  onDeleteElement={async (stepIndex, elementId) => {
+                                    const targetStep = stepsState[stepIndex];
+                                    await deleteElement(targetStep.id, elementId);
+                                  }}
                                   primaryColor={prototype.primaryColor}
                                   showSelectionConfig={false}
                                   disableAddCard={false}
@@ -1965,10 +2114,12 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                     <span className="text-base font-medium" style={{ color: '#464F5E' }}>{getElementLabel(el.type)}</span>
                       </div>
                     <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await deleteElement(currentStep.id, el.id);
-                        }}
+                      type="button"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        await deleteElement(currentStep.id, el.id);
+                      }}
                       className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                       title="Delete element"
                     >
@@ -2135,6 +2286,10 @@ export default function PrototypeView({ prototypeId, prototype: initialPrototype
                       element={el}
                       stepIndex={currentPage}
                       onUpdateElement={updateElement}
+                      onDeleteElement={async (stepIndex, elementId) => {
+                        const targetStep = stepsState[stepIndex];
+                        await deleteElement(targetStep.id, elementId);
+                      }}
                       primaryColor={prototype.primaryColor}
                       showSelectionConfig={el.type === 'simple_cards' || el.type === 'image_cards' || el.type === 'image_only_card' || el.type === 'advanced_cards'}
                     />

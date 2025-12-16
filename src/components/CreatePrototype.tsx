@@ -21,7 +21,25 @@ import PresenceIndicator from './PresenceIndicator';
 import { usePresence } from '../hooks/usePresence';
 import { useAutoSave } from '../hooks/useAutoSave';
 import AutoSaveIndicator from './AutoSaveIndicator';
-import { useModal } from '../contexts/ModalContext';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableItem } from './SortableItem';
+import { dndLog, dndWarn, dndError } from '../utils/dndDebug';
 import {
   getQuestionTemplates,
   saveQuestionTemplate,
@@ -35,6 +53,7 @@ import {
   getTemplateStorageInfo,
   getStorageUsage,
 } from '../utils/templates';
+import { updatePrototype } from '../utils/storage';
 
 interface CreatePrototypeProps {
   onSave: (prototype: Prototype) => void;
@@ -55,7 +74,6 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     userId,
     userName
   );
-  const { confirm } = useModal();
 
   // Track editing state
   useEffect(() => {
@@ -115,7 +133,7 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       console.log('Auto-saved:', savedPrototype.name);
     },
   });
-  const { isSaving, lastSaved } = autoSaveResult;
+  const { isSaving, lastSaved, saveNow } = autoSaveResult;
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [openElementMenuStepId, setOpenElementMenuStepId] = useState<string | null>(null);
   const [newlyAddedElementId, setNewlyAddedElementId] = useState<string | null>(null);
@@ -149,13 +167,21 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     }
   }, [editingStepNameId, editingStepNameValue]);
   const [newlyAddedStepId, setNewlyAddedStepId] = useState<string | null>(null);
-  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
-  const [dropTargetStepId, setDropTargetStepId] = useState<string | null>(null);
-  const [dropTargetStepPosition, setDropTargetStepPosition] = useState<'above' | 'below' | null>(null);
-  const [draggedElementId, setDraggedElementId] = useState<string | null>(null);
-  const [draggedElementStepId, setDraggedElementStepId] = useState<string | null>(null);
-  const [dropTargetElementId, setDropTargetElementId] = useState<string | null>(null);
-  const [dropTargetElementPosition, setDropTargetElementPosition] = useState<'above' | 'below' | null>(null);
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
+  const [activeElementId, setActiveElementId] = useState<string | null>(null);
+  const [activeElementStepId, setActiveElementStepId] = useState<string | null>(null);
+
+  // Configure sensors with activation constraint
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
   // Template-related state
   const [showQuestionTemplateModal, setShowQuestionTemplateModal] = useState(false);
@@ -199,9 +225,6 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     };
     loadTemplates();
   }, []);
-
-  // Determine if this prototype was saved before (has an ID and exists in storage)
-  const isPreviouslySaved = editingPrototype?.id && editingPrototype?.createdAt;
 
   // Store initial state for reset functionality
   // This captures the state when the component first mounts
@@ -256,24 +279,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       };
     }
 
-    const confirmMessage = isPreviouslySaved 
-      ? 'Are you sure you want to reset to the last saved version?' 
-      : template
-      ? 'Are you sure you want to reset all data to the template state?'
-      : 'Are you sure you want to reset all data to default?';
-    
     try {
-      const confirmed = await confirm({
-        message: confirmMessage,
-      });
-      
-      // Only reset if user explicitly confirmed (clicked OK)
-      // confirmed will be true only when OK is clicked, false when Cancel is clicked
-      if (!confirmed) {
-        return; // User cancelled, do nothing
-      }
-      
-      // Capture reset state AFTER confirmation to ensure we have the correct values
+      // Capture reset state
       const resetState = initialStateRef.current;
       
       // User confirmed - reset all form fields
@@ -454,8 +461,8 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
       const errorMessage = error instanceof Error ? error.message : String(error);
       
       if (errorMessage.includes('quota') || errorMessage.includes('QuotaExceededError')) {
-        const storageInfo = getTemplateStorageInfo();
-        const storageUsage = getStorageUsage();
+        const storageInfo = await getTemplateStorageInfo();
+        const storageUsage = await getStorageUsage();
         setSystemMessage({
           isOpen: true,
           message: `Storage quota exceeded (${storageUsage.percentage.toFixed(1)}% used). Please:`,
@@ -533,64 +540,132 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   };
 
   const deleteStep = async (stepId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this step?',
-    });
-    if (confirmed) {
-      setSteps(steps.filter(step => step.id !== stepId));
-      if (expandedStepId === stepId) {
-        setExpandedStepId(null);
+    const DEBUG_DELETION = true; // Set to false to disable debug logs
+    
+    try {
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP CreatePrototype] === DELETION STARTED ===', { stepId });
+        console.log('[DELETE STEP CreatePrototype] Current steps:', steps.map(s => ({ id: s.id, name: s.name || 'Unnamed', isApplicationStep: s.isApplicationStep })));
       }
+      
+      const step = steps.find(s => s.id === stepId);
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP CreatePrototype] Step found:', step ? { id: step.id, name: step.name || 'Unnamed', elementCount: step.elements.length } : 'NOT FOUND');
+        console.log('[DELETE STEP CreatePrototype] Updating state...');
+      }
+      
+      // Use functional update to avoid stale closure issues
+      let updatedStepsForSave: Step[] = [];
+      setSteps(prevSteps => {
+        const beforeCount = prevSteps.length;
+        const stepExists = prevSteps.some(s => s.id === stepId);
+        
+        if (DEBUG_DELETION) {
+          console.log('[DELETE STEP CreatePrototype] State update - before:', { stepCount: beforeCount, stepExists });
+        }
+        
+        const updatedSteps = prevSteps.filter(step => step.id !== stepId);
+        const afterCount = updatedSteps.length;
+        const stepStillExists = updatedSteps.some(s => s.id === stepId);
+        
+        if (DEBUG_DELETION) {
+          console.log('[DELETE STEP CreatePrototype] State update - after:', { 
+            stepCount: afterCount, 
+            stepStillExists,
+            success: !stepStillExists && afterCount === beforeCount - 1,
+            remainingStepIds: updatedSteps.map(s => s.id)
+          });
+        }
+        
+        if (stepStillExists) {
+          console.error('[DELETE STEP CreatePrototype] ERROR: Step still exists after deletion!', {
+            stepId,
+            remainingStepIds: updatedSteps.map(s => s.id)
+          });
+        }
+        
+        // Store for database save
+        updatedStepsForSave = updatedSteps;
+        return updatedSteps;
+      });
+      
+      // Clear related state
+      if (expandedStepId === stepId) setExpandedStepId(null);
+      if (openElementMenuStepId === stepId) setOpenElementMenuStepId(null);
+      if (editingStepNameId === stepId) {
+        setEditingStepNameId(null);
+        setEditingStepNameValue('');
+      }
+      
+      // Save to database immediately (no delay)
+      if (editingPrototype?.id) {
+        try {
+          await updatePrototype(editingPrototype.id, {
+            name,
+            description,
+            primaryColor,
+            logoUrl: logoUploadMode === 'url' ? logoUrl : logoFile ? logoUrl : editingPrototype.logoUrl,
+            logoUploadMode,
+            steps: updatedStepsForSave,
+          });
+          
+          if (DEBUG_DELETION) {
+            console.log('[DELETE STEP CreatePrototype] Successfully saved to database');
+          }
+        } catch (error) {
+          console.error('[DELETE STEP CreatePrototype] Error saving step deletion:', error);
+          throw error; // Re-throw to be caught by outer try-catch
+        }
+      }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP CreatePrototype] === DELETION COMPLETE ===');
+      }
+    } catch (error) {
+      console.error('[DELETE STEP CreatePrototype] Error in deleteStep:', error);
+      throw error; // Re-throw for caller to handle
     }
   };
 
-  const handleStepDragStart = (e: React.DragEvent, stepId: string) => {
-    setDraggedStepId(stepId);
-    e.dataTransfer.effectAllowed = 'move';
+  const handleStepDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const stepId = active.id as string;
+    const step = steps.find(s => s.id === stepId);
+    
+    // Prevent dragging application steps
+    if (step?.isApplicationStep) {
+      dndWarn('Cannot drag application steps');
+      return;
+    }
+    
+    setActiveStepId(stepId);
+    dndLog('Step drag started:', stepId);
   };
 
-  const handleStepDragOver = (e: React.DragEvent, stepId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  const handleStepDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
     
-    if (!draggedStepId || draggedStepId === stepId) {
-      setDropTargetStepId(null);
-      setDropTargetStepPosition(null);
+    dndLog('Step drag ended:', { activeId: active.id, overId: over?.id });
+
+    if (!over || active.id === over.id) {
+      setActiveStepId(null);
       return;
     }
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mouseY = e.clientY;
-    const elementCenterY = rect.top + rect.height / 2;
-    
-    setDropTargetStepId(stepId);
-    setDropTargetStepPosition(mouseY < elementCenterY ? 'above' : 'below');
-  };
-
-  const handleStepDrop = (e: React.DragEvent, targetStepId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!draggedStepId || draggedStepId === targetStepId) {
-      setDropTargetStepId(null);
-      setDropTargetStepPosition(null);
-      return;
-    }
-
-    const draggedStep = steps.find(step => step.id === draggedStepId);
-    const targetStep = steps.find(step => step.id === targetStepId);
+    const draggedStep = steps.find(s => s.id === active.id);
+    const targetStep = steps.find(s => s.id === over.id);
 
     // Prevent dragging application steps
     if (draggedStep?.isApplicationStep) {
-      setDropTargetStepId(null);
-      setDropTargetStepPosition(null);
+      dndWarn('Cannot drag application steps');
+      setActiveStepId(null);
       return;
     }
     
-    // Prevent dropping before application steps (application steps must stay at the end)
+    // Prevent dropping before application steps
     if (targetStep?.isApplicationStep) {
-      setDropTargetStepId(null);
-      setDropTargetStepPosition(null);
+      dndWarn('Cannot drop before application steps');
+      setActiveStepId(null);
       return;
     }
 
@@ -598,118 +673,111 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     const regularSteps = steps.filter(s => !s.isApplicationStep);
     const applicationSteps = steps.filter(s => s.isApplicationStep);
     
-    // Find indices within regular steps only
-    const draggedRegularIndex = regularSteps.findIndex(s => s.id === draggedStepId);
-    const targetRegularIndex = regularSteps.findIndex(s => s.id === targetStepId);
+    const draggedIndex = regularSteps.findIndex(s => s.id === active.id);
+    const targetIndex = regularSteps.findIndex(s => s.id === over.id);
     
-    if (draggedRegularIndex === -1 || targetRegularIndex === -1) {
-      setDropTargetStepId(null);
-      setDropTargetStepPosition(null);
+    if (draggedIndex === -1 || targetIndex === -1) {
+      dndWarn('Invalid step indices:', { draggedIndex, targetIndex });
+      setActiveStepId(null);
       return;
     }
 
-    // If dropTargetStepPosition is not set, determine it from mouse position
-    let position = dropTargetStepPosition;
-    if (!position) {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const mouseY = e.clientY;
-      const elementCenterY = rect.top + rect.height / 2;
-      position = mouseY < elementCenterY ? 'above' : 'below';
+    // Quality check
+    if (regularSteps.length === 0) {
+      dndWarn('Cannot reorder: no regular steps available');
+      setActiveStepId(null);
+      return;
     }
 
-    const newRegularSteps = [...regularSteps];
-    const [draggedStepItem] = newRegularSteps.splice(draggedRegularIndex, 1);
+    const newRegularSteps = arrayMove(regularSteps, draggedIndex, targetIndex);
     
-    // After removing the dragged item, recalculate the target index
-    // because indices shift when an item is removed before the target
-    let adjustedTargetIndex = targetRegularIndex;
-    if (draggedRegularIndex < targetRegularIndex) {
-      // If we removed an item before the target, the target index decreases by 1
-      adjustedTargetIndex = targetRegularIndex - 1;
+    // Quality check
+    if (newRegularSteps.length !== regularSteps.length) {
+      dndError('Step reorder error: length mismatch', { 
+        original: regularSteps.length, 
+        reordered: newRegularSteps.length 
+      });
+      setActiveStepId(null);
+      return;
     }
-    
-    // Calculate the correct insertion index based on drop position
-    let insertIndex = adjustedTargetIndex;
-    if (position === 'below') {
-      // If dropping below, insert after the target
-      insertIndex = adjustedTargetIndex + 1;
-    } else if (position === 'above') {
-      // If dropping above, insert at the target position
-      insertIndex = adjustedTargetIndex;
-    }
-    
-    // Ensure insertIndex is within bounds
-    insertIndex = Math.max(0, Math.min(insertIndex, newRegularSteps.length));
-    
-    newRegularSteps.splice(insertIndex, 0, draggedStepItem);
 
-    // Combine regular steps with application steps at the end
+    dndLog('Reordering steps:', { from: draggedIndex, to: targetIndex });
     setSteps([...newRegularSteps, ...applicationSteps]);
-    setDraggedStepId(null);
-    setDropTargetStepId(null);
-    setDropTargetStepPosition(null);
+    setActiveStepId(null);
   };
 
-  const handleStepDragEnd = () => {
-    // Always clear drag state when drag ends
-    // This ensures state is reset even if drop didn't happen
-    setDraggedStepId(null);
-    setDropTargetStepId(null);
-    setDropTargetStepPosition(null);
+  const handleStepDragCancel = () => {
+    dndLog('Step drag cancelled');
+    setActiveStepId(null);
   };
 
-  const handleElementDragStart = (e: React.DragEvent, stepId: string, elementId: string) => {
-    setDraggedElementId(elementId);
-    setDraggedElementStepId(stepId);
-    e.dataTransfer.effectAllowed = 'move';
+  const handleElementDragStart = (event: DragStartEvent, stepId: string) => {
+    const { active } = event;
+    setActiveElementId(active.id as string);
+    setActiveElementStepId(stepId);
+    dndLog('Element drag started:', { elementId: active.id, stepId });
   };
 
-  const handleElementDragOver = (e: React.DragEvent, elementId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  const handleElementDragEnd = (event: DragEndEvent, stepId: string) => {
+    const { active, over } = event;
     
-    if (!draggedElementId || draggedElementId === elementId) {
-      setDropTargetElementId(null);
-      setDropTargetElementPosition(null);
+    dndLog('Element drag ended:', { activeId: active.id, overId: over?.id, stepId });
+
+    if (!over || active.id === over.id || activeElementStepId !== stepId) {
+      setActiveElementId(null);
+      setActiveElementStepId(null);
       return;
     }
-
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mouseY = e.clientY;
-    const elementCenterY = rect.top + rect.height / 2;
-    
-    setDropTargetElementId(elementId);
-    setDropTargetElementPosition(mouseY < elementCenterY ? 'above' : 'below');
-  };
-
-  const handleElementDrop = (e: React.DragEvent, stepId: string, targetElementId: string) => {
-    e.preventDefault();
-    setDropTargetElementId(null);
-    setDropTargetElementPosition(null);
-    if (!draggedElementId || !draggedElementStepId || draggedElementId === targetElementId || draggedElementStepId !== stepId) return;
 
     const step = steps.find(s => s.id === stepId);
-    if (!step) return;
+    if (!step) {
+      dndWarn('Step not found:', stepId);
+      setActiveElementId(null);
+      setActiveElementStepId(null);
+      return;
+    }
 
-    const draggedIndex = step.elements.findIndex(el => el.id === draggedElementId);
-    const targetIndex = step.elements.findIndex(el => el.id === targetElementId);
+    const draggedIndex = step.elements.findIndex(el => el.id === active.id);
+    const targetIndex = step.elements.findIndex(el => el.id === over.id);
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    if (draggedIndex === -1 || targetIndex === -1) {
+      dndWarn('Invalid element indices:', { draggedIndex, targetIndex });
+      setActiveElementId(null);
+      setActiveElementStepId(null);
+      return;
+    }
 
-    const newElements = [...step.elements];
-    const [draggedElement] = newElements.splice(draggedIndex, 1);
-    newElements.splice(targetIndex, 0, draggedElement);
+    // Quality check
+    if (step.elements.length === 0) {
+      dndWarn('Cannot reorder: no elements available');
+      setActiveElementId(null);
+      setActiveElementStepId(null);
+      return;
+    }
 
+    const newElements = arrayMove(step.elements, draggedIndex, targetIndex);
+    
+    // Quality check
+    if (newElements.length !== step.elements.length) {
+      dndError('Element reorder error: length mismatch', { 
+        original: step.elements.length, 
+        reordered: newElements.length 
+      });
+      setActiveElementId(null);
+      setActiveElementStepId(null);
+      return;
+    }
+
+    dndLog('Reordering elements:', { from: draggedIndex, to: targetIndex, stepId });
     updateStep(stepId, { elements: newElements });
-    setDraggedElementId(null);
-    setDraggedElementStepId(null);
+    setActiveElementId(null);
+    setActiveElementStepId(null);
   };
 
-  const handleElementDragEnd = () => {
-    setDraggedElementId(null);
-    setDraggedElementStepId(null);
-    setDropTargetElementId(null);
-    setDropTargetElementPosition(null);
+  const handleElementDragCancel = () => {
+    dndLog('Element drag cancelled');
+    setActiveElementId(null);
+    setActiveElementStepId(null);
   };
 
   // Card element types that should be mutually exclusive
@@ -894,15 +962,30 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
   };
 
   const deleteElement = async (stepId: string, elementId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this element?',
-    });
-    if (confirmed) {
-      setSteps(steps.map(step =>
+    // Remove element from state
+    setSteps(prevSteps =>
+      prevSteps.map(step =>
         step.id === stepId
-          ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
+          ? {
+              ...step,
+              elements: step.elements.filter(el => el.id !== elementId),
+              ...(step.tags && { tags: step.tags.filter(tag => tag.elementId !== elementId) })
+            }
           : step
-      ));
+      )
+    );
+    
+    // Clear related state
+    if (newlyAddedElementId === elementId) setNewlyAddedElementId(null);
+    if (openElementMenuStepId === stepId) setOpenElementMenuStepId(null);
+    
+    // Save to database
+    if (editingPrototype?.id) {
+      setTimeout(() => {
+        saveNow().catch(error => {
+          console.error('Error saving element deletion:', error);
+        });
+      }, 100);
     }
   };
 
@@ -1111,64 +1194,70 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2" key={`steps-container-${steps.length}-${steps.map(s => s.id).join('-')}`}>
               {(() => {
                 const regularSteps = steps.filter(s => !s.isApplicationStep);
                 const applicationSteps = steps.filter(s => s.isApplicationStep);
                 
                 return (
                   <>
-                    {/* Regular Steps */}
-                    {regularSteps.map((step, index) => (
-                      <React.Fragment key={step.id}>
-                        {/* Drop indicator line above */}
-                        {dropTargetStepId === step.id && dropTargetStepPosition === 'above' && draggedStepId && draggedStepId !== step.id && (
-                          <div 
-                            className="h-0.5 my-1 transition-all pointer-events-none"
-                            style={{ backgroundColor: '#4D3EE0' }}
-                          />
-                        )}
-                        <div
-                          id={`step-${step.id}`}
-                          className={`border rounded-lg transition-all border-gray-200 ${
-                            draggedStepId === step.id 
-                              ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
-                              : ''
-                          }`}
-                          style={draggedStepId === step.id ? { borderRadius: '0.5rem' } : {}}
-                          draggable={false}
-                          onDragStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onDragOver={(e) => handleStepDragOver(e, step.id)}
-                          onDrop={(e) => handleStepDrop(e, step.id)}
-                        >
-                        <div
+                    {/* Regular Steps with DnD */}
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragStart={handleStepDragStart}
+                      onDragEnd={handleStepDragEnd}
+                      onDragCancel={handleStepDragCancel}
+                    >
+                      <SortableContext
+                        key={`sortable-${regularSteps.length}-${regularSteps.map(s => s.id).join('-')}`}
+                        items={regularSteps.map(s => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {regularSteps.map((step, index) => {
+                          return (
+                          <SortableItem
+                            key={`step-${step.id}-${index}`}
+                            id={step.id}
+                            className="mb-2"
+                          >
+                            {({ attributes, listeners, isDragging }) => {
+                              return (
+                              <div
+                                id={`step-${step.id}`}
+                                className={`border rounded-lg transition-all duration-300 ${
+                                  isDragging ? 'opacity-50' : 'border-gray-200 opacity-100'
+                                }`}
+                                style={isDragging ? { borderColor: '#4D3EE0' } : {}}
+                              >
+                                <div
                           className={`p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 rounded-t-lg transition-colors ${
                             expandedStepId !== step.id ? 'rounded-b-lg' : ''
                           }`}
-                          onClick={() => setExpandedStepId(expandedStepId === step.id ? null : step.id)}
+                          onClick={(e) => {
+                            // Only toggle if click wasn't on a button or interactive element
+                            const target = e.target as HTMLElement;
+                            // Check if click was directly on a button or inside a button
+                            const clickedButton = target.closest('button');
+                            // Only prevent toggle if we actually clicked a button
+                            if (clickedButton) {
+                              return; // Don't toggle if clicking a button
+                            }
+                            setExpandedStepId(expandedStepId === step.id ? null : step.id);
+                          }}
                         >
-                          <div className="flex items-center gap-3">
-                            <span
-                              draggable={true}
-                              onDragStart={(e) => {
-                                e.stopPropagation();
-                                handleStepDragStart(e, step.id);
-                              }}
-                              onDragEnd={(e) => {
-                                e.stopPropagation();
-                                handleStepDragEnd();
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="inline-flex cursor-grab active:cursor-grabbing"
-                            >
-                              <GripVertical 
-                                size={16} 
-                                className="text-gray-400 hover:text-gray-600 pointer-events-none" 
-                              />
-                            </span>
+                                <div className="flex items-center gap-3">
+                                  <span
+                                    {...attributes}
+                                    {...listeners}
+                                    className="inline-flex cursor-grab active:cursor-grabbing touch-none"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                  >
+                                    <GripVertical 
+                                      size={16} 
+                                      className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                    />
+                                  </span>
                             <div className="flex items-center gap-2">
                               {editingStepNameId === step.id ? (
                                 <div 
@@ -1242,9 +1331,15 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                       </Tooltip>
                       <Tooltip content="Delete step">
                         <button
+                          type="button"
                           onClick={async (e) => {
+                            e.preventDefault();
                             e.stopPropagation();
-                            await deleteStep(step.id);
+                            try {
+                              await deleteStep(step.id);
+                            } catch (error) {
+                              console.error('[DELETE STEP] Error from deleteStep:', error);
+                            }
                           }}
                           className="flex items-center justify-center p-2 text-gray-400 hover:text-red-600 transition-colors"
                         >
@@ -1438,67 +1533,73 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                         </div>
 
                         {step.elements.length > 0 ? (
-                          <div className="space-y-2">
-                            {step.elements.map((element, elementIndex) => {
-                              const canDrag = step.elements.length > 1;
-                              const isDragging = draggedElementId === element.id;
-                              
-                              return (
-                                <React.Fragment key={element.id}>
-                                  {/* Drop indicator line above */}
-                                  {dropTargetElementId === element.id && dropTargetElementPosition === 'above' && draggedElementId && draggedElementId !== element.id && draggedElementStepId === step.id && (
-                                    <div 
-                                      className="h-0.5 my-1 transition-all pointer-events-none"
-                                      style={{ backgroundColor: '#4D3EE0' }}
-                                    />
-                                  )}
-                                  <div
-                                    id={`element-${element.id}`}
-                                    className={`bg-gray-50 rounded-lg border transition-all border-gray-200 ${
-                                      isDragging 
-                                        ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
-                                        : ''
-                                    }`}
-                                    style={isDragging ? { borderRadius: '0.5rem' } : {}}
-                                    draggable={false}
-                                    onDragStart={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                    onDragOver={canDrag ? (e) => handleElementDragOver(e, element.id) : undefined}
-                                    onDrop={(e) => canDrag && handleElementDrop(e, step.id, element.id)}
-                                  >
-                                  <div className="flex justify-between items-center p-3">
-                                    <span 
-                                      className="text-sm font-medium flex items-center gap-2" 
-                                      style={{ color: '#464F5E' }}
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragStart={(e) => handleElementDragStart(e, step.id)}
+                            onDragEnd={(e) => handleElementDragEnd(e, step.id)}
+                            onDragCancel={handleElementDragCancel}
+                          >
+                            <SortableContext
+                              items={step.elements.map(el => el.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div className="space-y-2">
+                                {step.elements.map((element) => {
+                                  const canDrag = step.elements.length > 1;
+                                  
+                                  return (
+                                    <SortableItem
+                                      key={element.id}
+                                      id={element.id}
+                                      disabled={!canDrag}
+                                      className="mb-2"
                                     >
-                                      {canDrag && (
-                                        <span
-                                          draggable={true}
-                                          onDragStart={(e) => {
-                                            e.stopPropagation();
-                                            handleElementDragStart(e, step.id, element.id);
-                                          }}
-                                          onDragEnd={(e) => {
-                                            e.stopPropagation();
-                                            handleElementDragEnd();
-                                          }}
-                                          onMouseDown={(e) => e.stopPropagation()}
-                                          className="inline-flex cursor-grab active:cursor-grabbing"
+                                      {({ attributes, listeners, isDragging }) => (
+                                        <div
+                                          id={`element-${element.id}`}
+                                          className={`bg-gray-50 rounded-lg border transition-all ${
+                                            isDragging ? 'opacity-50' : 'border-gray-200'
+                                          }`}
+                                          style={isDragging ? { borderColor: '#4D3EE0' } : {}}
                                         >
-                                          <GripVertical 
-                                            size={16} 
-                                            className="text-gray-400 hover:text-gray-600 pointer-events-none" 
-                                          />
-                                        </span>
-                                      )}
-                                      {getElementLabel(element.type)}
-                                    </span>
+                                          <div className="flex justify-between items-center p-3">
+                                            <span 
+                                              className="text-sm font-medium flex items-center gap-2" 
+                                              style={{ color: '#464F5E' }}
+                                            >
+                                              {canDrag && (
+                                                <span
+                                                  {...attributes}
+                                                  {...listeners}
+                                                  className="inline-flex cursor-grab active:cursor-grabbing touch-none"
+                                                  onMouseDown={(e) => e.stopPropagation()}
+                                                >
+                                                  <GripVertical 
+                                                    size={16} 
+                                                    className="text-gray-400 hover:text-gray-600 pointer-events-none" 
+                                                  />
+                                                </span>
+                                              )}
+                                              {getElementLabel(element.type)}
+                                            </span>
                                     <div className="flex items-center justify-center gap-2">
                                       <Tooltip content="Delete element">
                                         <button
-                                          onClick={async () => await deleteElement(step.id, element.id)}
+                                          type="button"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                          }}
+                                          onClick={async (e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            try {
+                                              await deleteElement(step.id, element.id);
+                                            } catch (error) {
+                                              console.error('Failed to delete element:', error);
+                                            }
+                                          }}
                                           className="flex items-center justify-center p-1 text-gray-400 hover:text-red-600 transition-colors"
                                         >
                                           <Trash2 size={16} />
@@ -1594,6 +1695,10 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                       const targetStep = steps[stepIndex];
                                       updateElement(targetStep.id, elementId, updates);
                                     }}
+                                    onDeleteElement={async (stepIndex, elementId) => {
+                                      const targetStep = steps[stepIndex];
+                                      await deleteElement(targetStep.id, elementId);
+                                    }}
                                     primaryColor={primaryColor}
                                     showSelectionConfig={true}
                                   />
@@ -1682,39 +1787,61 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                        const targetStep = steps[stepIndex];
                                        updateElement(targetStep.id, elementId, updates);
                                      }}
+                                     onDeleteElement={async (stepIndex, elementId) => {
+                                       const targetStep = steps[stepIndex];
+                                       await deleteElement(targetStep.id, elementId);
+                                     }}
                                      primaryColor={primaryColor}
                                      showSelectionConfig={element.type === 'simple_cards' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards'}
                                    />
                                  )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </SortableItem>
+                                  );
+                                })}
+                              </div>
+                            </SortableContext>
+                            <DragOverlay>
+                              {activeElementId && activeElementStepId === step.id ? (
+                                <div className="bg-gray-50 rounded-lg border shadow-lg opacity-90 rotate-2 p-3" style={{ borderColor: '#4D3EE0' }}>
+                                  <div className="flex items-center gap-2">
+                                    <GripVertical size={16} className="text-gray-400" />
+                                    <span className="text-sm font-medium text-gray-600">
+                                      {getElementLabel(step.elements.find(el => el.id === activeElementId)?.type || 'text_field')}
+                                    </span>
                                   </div>
                                 </div>
-                                  {/* Drop indicator line below */}
-                                  {dropTargetElementId === element.id && dropTargetElementPosition === 'below' && draggedElementId && draggedElementId !== element.id && draggedElementStepId === step.id && (
-                                    <div 
-                                      className="h-0.5 my-1 transition-all pointer-events-none"
-                                      style={{ backgroundColor: '#4D3EE0' }}
-                                    />
-                                  )}
-                                </React.Fragment>
-                              );
-                            })}
-                          </div>
+                              ) : null}
+                            </DragOverlay>
+                          </DndContext>
                         ) : (
                           <p className="text-sm text-gray-500 text-center py-4">No elements added yet</p>
                         )}
                       </div>
                     </div>
-                  )}
-                </div>
-                        {/* Drop indicator line below */}
-                        {dropTargetStepId === step.id && dropTargetStepPosition === 'below' && draggedStepId && draggedStepId !== step.id && (
-                          <div 
-                            className="h-0.5 my-1 transition-all pointer-events-none"
-                            style={{ backgroundColor: '#4D3EE0' }}
-                          />
-                        )}
-                      </React.Fragment>
-                      ))}
+                            )}
+                              </div>
+                            );
+                            }}
+                          </SortableItem>
+                          );
+                        })}
+                      </SortableContext>
+                      <DragOverlay>
+                        {activeStepId ? (
+                          <div className="border rounded-lg bg-white shadow-lg opacity-90 rotate-2 p-4" style={{ borderColor: '#4D3EE0' }}>
+                            <div className="flex items-center gap-3">
+                              <GripVertical size={16} className="text-gray-400" />
+                              <span className="font-medium text-gray-600">
+                                {regularSteps.find(s => s.id === activeStepId)?.name || 'Step'}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                      </DragOverlay>
+                    </DndContext>
                     
                     {/* Application Steps */}
                     {applicationSteps.map((step) => {
@@ -1743,19 +1870,11 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                         <div
                           key={step.id}
                           id={`step-${step.id}`}
-                          className={`border-2 rounded-lg transition-all ${
-                            draggedStepId === step.id 
-                              ? 'opacity-20 shadow-lg scale-105' 
-                              : ''
-                          }`}
+                          className="border-2 rounded-lg transition-all"
                           style={{
-                            borderColor: draggedStepId === step.id 
-                              ? addOpacity(systemPrimaryColor, 0.4)
-                              : addOpacity(systemPrimaryColor, 0.1),
+                            borderColor: addOpacity(systemPrimaryColor, 0.1),
                             backgroundColor: addOpacity(systemPrimaryColor, 0.06),
-                            borderRadius: draggedStepId === step.id ? '0.5rem' : undefined,
                           }}
-                          draggable={false}
                         >
                           <div
                             className={`p-4 flex justify-between items-center cursor-pointer transition-colors rounded-t-lg ${
@@ -1778,7 +1897,17 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                 : '0.5rem';
                               e.currentTarget.style.borderRadius = borderRadius;
                             }}
-                            onClick={() => setExpandedStepId(expandedStepId === step.id ? null : step.id)}
+                            onClick={(e) => {
+                            // Only toggle if click wasn't on a button or interactive element
+                            const target = e.target as HTMLElement;
+                            // Check if click was directly on a button or inside a button
+                            const clickedButton = target.closest('button');
+                            // Only prevent toggle if we actually clicked a button
+                            if (clickedButton) {
+                              return; // Don't toggle if clicking a button
+                            }
+                            setExpandedStepId(expandedStepId === step.id ? null : step.id);
+                          }}
                           >
                             <div className="flex items-center gap-3">
                               <div 
@@ -1861,9 +1990,15 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                               </Tooltip>
                               <Tooltip content="Delete step">
                                 <button
+                                  type="button"
                                   onClick={async (e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
-                                    await deleteStep(step.id);
+                                    try {
+                                      await deleteStep(step.id);
+                                    } catch (error) {
+                                      console.error('[DELETE STEP] Error from deleteStep:', error);
+                                    }
                                   }}
                                   className="flex items-center justify-center p-2 text-gray-400 hover:text-red-600 transition-colors"
                                 >
@@ -1930,6 +2065,10 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                                   onUpdateElement={(stepIndex, elementId, updates) => {
                                                     const targetStep = steps[stepIndex];
                                                     updateElement(targetStep.id, elementId, updates);
+                                                  }}
+                                                  onDeleteElement={async (stepIndex, elementId) => {
+                                                    const targetStep = steps[stepIndex];
+                                                    await deleteElement(targetStep.id, elementId);
                                                   }}
                                                   primaryColor={primaryColor}
                                                   showSelectionConfig={false}
@@ -2016,65 +2155,36 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                   </div>
                                   <div className="space-y-2">
                                             {otherElements.map((element) => {
-                                              const canDrag = otherElements.length > 1;
-                                              const isDragging = draggedElementId === element.id;
-                                              
                                               return (
-                                                <React.Fragment key={element.id}>
-                                                  {/* Drop indicator line above */}
-                                                  {dropTargetElementId === element.id && dropTargetElementPosition === 'above' && draggedElementId && draggedElementId !== element.id && draggedElementStepId === step.id && (
-                                                    <div 
-                                                      className="h-0.5 my-1 transition-all pointer-events-none"
-                                                      style={{ backgroundColor: '#4D3EE0' }}
-                                                    />
-                                                  )}
-                                                  <div
-                                                    id={`element-${element.id}`}
-                                                    className={`p-3 bg-gray-50 rounded-lg border transition-all border-gray-200 ${
-                                                      isDragging 
-                                                        ? 'opacity-50 shadow-lg scale-105 border-blue-400' 
-                                                        : ''
-                                                    }`}
-                                                    style={isDragging ? { borderRadius: '0.5rem' } : {}}
-                                                    draggable={false}
-                                                    onDragStart={(e) => {
-                                                      e.preventDefault();
-                                                      e.stopPropagation();
-                                                    }}
-                                                    onDragOver={canDrag ? (e) => handleElementDragOver(e, element.id) : undefined}
-                                                    onDrop={(e) => canDrag && handleElementDrop(e, step.id, element.id)}
-                                                  >
+                                                <div
+                                                  key={element.id}
+                                                  id={`element-${element.id}`}
+                                                  className="p-3 bg-gray-50 rounded-lg border border-gray-200"
+                                                >
                                                   <div className="flex justify-between items-center">
                                                     <span 
                                                       className="text-sm font-medium flex items-center gap-2" 
                                                       style={{ color: '#464F5E' }}
                                                     >
-                                                      {canDrag && (
-                                                        <span
-                                                          draggable={true}
-                                                          onDragStart={(e) => {
-                                                            e.stopPropagation();
-                                                            handleElementDragStart(e, step.id, element.id);
-                                                          }}
-                                                          onDragEnd={(e) => {
-                                                            e.stopPropagation();
-                                                            handleElementDragEnd();
-                                                          }}
-                                                          onMouseDown={(e) => e.stopPropagation()}
-                                                          className="inline-flex cursor-grab active:cursor-grabbing"
-                                                        >
-                                                          <GripVertical 
-                                                            size={16} 
-                                                            className="text-gray-400 hover:text-gray-600 pointer-events-none" 
-                                                          />
-                                                        </span>
-                                                      )}
                                                       {getElementLabel(element.type)}
                                                     </span>
                                                     <div className="flex items-center justify-center gap-2">
                                                       <Tooltip content="Delete element">
                                                         <button
-                                                          onClick={async () => await deleteElement(step.id, element.id)}
+                                                          type="button"
+                                                          onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                          }}
+                                                          onClick={async (e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            try {
+                                                              await deleteElement(step.id, element.id);
+                                                            } catch (error) {
+                                                              console.error('Failed to delete element:', error);
+                                                            }
+                                                          }}
                                                           className="flex items-center justify-center p-1 text-gray-400 hover:text-red-600 transition-colors"
                                                         >
                                                           <Trash2 size={16} />
@@ -2091,22 +2201,18 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
                                               const targetStep = steps[stepIndex];
                                               updateElement(targetStep.id, elementId, updates);
                                             }}
+                                            onDeleteElement={async (stepIndex, elementId) => {
+                                              const targetStep = steps[stepIndex];
+                                              await deleteElement(targetStep.id, elementId);
+                                            }}
                                             primaryColor={primaryColor}
                                             showSelectionConfig={element.type === 'simple_cards' || element.type === 'image_cards' || element.type === 'image_only_card' || element.type === 'advanced_cards'}
                                           />
                                         )}
                                       </div>
-                                                  {/* Drop indicator line below */}
-                                                  {dropTargetElementId === element.id && dropTargetElementPosition === 'below' && draggedElementId && draggedElementId !== element.id && draggedElementStepId === step.id && (
-                                                    <div 
-                                                      className="h-0.5 my-1 transition-all pointer-events-none"
-                                                      style={{ backgroundColor: '#4D3EE0' }}
-                                                    />
-                                                  )}
-                                                </React.Fragment>
                                               );
                                             })}
-                                  </div>
+                                          </div>
                                         </>
                                 )}
                                     </>
@@ -2217,3 +2323,4 @@ export default function CreatePrototype({ onSave, onCancel, editingPrototype, te
     </div>
   );
 }
+

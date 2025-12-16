@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Trash2, Save, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Save, ChevronDown, ChevronUp, GripVertical, Pencil } from 'lucide-react';
 import { Step, Element, ElementType } from '../types';
 import { ELEMENT_TYPES, getElementLabel } from '../utils/elementTypes';
-import { useModal } from '../contexts/ModalContext';
 import SystemField from './SystemField';
 import ShowLabelToggle from './ShowLabelToggle';
 import CardEditor from './CardEditor';
@@ -46,9 +45,14 @@ export default function TemplateEditor({
   const [dropTargetStepId, setDropTargetStepId] = useState<string | null>(null);
   const [dropTargetStepPosition, setDropTargetStepPosition] = useState<'above' | 'below' | null>(null);
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
+  const [editingStepNameId, setEditingStepNameId] = useState<string | null>(null);
+  const [editingStepNameValue, setEditingStepNameValue] = useState<string>('');
+  const editingStepNameRef = useRef<HTMLDivElement | null>(null);
+  const [editingTemplateName, setEditingTemplateName] = useState<boolean>(false);
+  const [editingTemplateNameValue, setEditingTemplateNameValue] = useState<string>('');
+  const editingTemplateNameRef = useRef<HTMLDivElement | null>(null);
   const savedStateRef = useRef<{ name: string; steps: Step[] }>({ name: initialName, steps: initialSteps });
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const { confirm } = useModal();
 
   useEffect(() => {
     setName(initialName);
@@ -186,14 +190,71 @@ export default function TemplateEditor({
   };
 
   const deleteStep = async (stepId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this step?',
-    });
-    if (confirmed) {
-      setSteps(steps.filter(step => step.id !== stepId));
-      if (expandedStepId === stepId) {
-        setExpandedStepId(null);
+    const DEBUG_DELETION = true; // Set to false to disable debug logs
+    
+    try {
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP TemplateEditor] === DELETION STARTED ===', { stepId });
+        console.log('[DELETE STEP TemplateEditor] Current steps:', steps.map(s => ({ id: s.id, name: s.name || 'Unnamed' })));
+        const step = steps.find(s => s.id === stepId);
+        console.log('[DELETE STEP TemplateEditor] Step found:', step ? { id: step.id, name: step.name || 'Unnamed', elementCount: step.elements.length } : 'NOT FOUND');
       }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP TemplateEditor] Updating state...');
+      }
+      
+      // Use functional update to avoid stale closure issues
+        setSteps(prevSteps => {
+          const beforeCount = prevSteps.length;
+          const stepExists = prevSteps.some(s => s.id === stepId);
+          
+          if (DEBUG_DELETION) {
+            console.log('[DELETE STEP TemplateEditor] State update - before:', { stepCount: beforeCount, stepExists });
+          }
+          
+          const updatedSteps = prevSteps.filter(step => step.id !== stepId);
+          const afterCount = updatedSteps.length;
+          const stepStillExists = updatedSteps.some(s => s.id === stepId);
+          
+          if (DEBUG_DELETION) {
+            console.log('[DELETE STEP TemplateEditor] State update - after:', { 
+              stepCount: afterCount, 
+              stepStillExists,
+              success: !stepStillExists && afterCount === beforeCount - 1,
+              remainingStepIds: updatedSteps.map(s => s.id)
+            });
+          }
+          
+          if (stepStillExists) {
+            console.error('[DELETE STEP TemplateEditor] ERROR: Step still exists after deletion!', {
+              stepId,
+              remainingStepIds: updatedSteps.map(s => s.id)
+            });
+          }
+          
+          return updatedSteps;
+        });
+        
+        // Clear related state if the deleted step was expanded or had menu open
+        if (expandedStepId === stepId) {
+          setExpandedStepId(null);
+        }
+        if (openElementMenuStepId === stepId) {
+          setOpenElementMenuStepId(null);
+        }
+        // Clear editing step name if it was for this step
+        if (editingStepNameId === stepId) {
+          setEditingStepNameId(null);
+          setEditingStepNameValue('');
+        }
+        
+      if (DEBUG_DELETION) {
+        console.log('[DELETE STEP TemplateEditor] === DELETION COMPLETE ===');
+      }
+    } catch (error) {
+      console.error('[DELETE STEP TemplateEditor] Error in deleteStep:', error);
+      throw error;
     }
   };
 
@@ -363,6 +424,60 @@ export default function TemplateEditor({
     }
   }, [newlyAddedStepId]);
 
+  // Handle clicks outside the editing field for step names
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (editingStepNameId && editingStepNameRef.current && !editingStepNameRef.current.contains(event.target as Node)) {
+        if (editingStepNameValue.trim()) {
+          updateStep(editingStepNameId, { name: editingStepNameValue.trim() });
+        }
+        setEditingStepNameId(null);
+        setEditingStepNameValue('');
+      }
+    };
+
+    if (editingStepNameId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [editingStepNameId, editingStepNameValue]);
+
+  // Handle clicks outside the editing field for template name
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (editingTemplateName && editingTemplateNameRef.current && !editingTemplateNameRef.current.contains(event.target as Node)) {
+        if (editingTemplateNameValue.trim()) {
+          setName(editingTemplateNameValue.trim());
+        }
+        setEditingTemplateName(false);
+        setEditingTemplateNameValue('');
+      }
+    };
+
+    if (editingTemplateName) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [editingTemplateName, editingTemplateNameValue]);
+
+  // Auto-focus the input when editing template name starts
+  useEffect(() => {
+    if (editingTemplateName && editingTemplateNameRef.current) {
+      const input = editingTemplateNameRef.current.querySelector('input');
+      if (input) {
+        // Use setTimeout to ensure the input is rendered before focusing
+        setTimeout(() => {
+          input.focus();
+          input.select(); // Select all text for easier editing
+        }, 0);
+      }
+    }
+  }, [editingTemplateName]);
+
   const getDefaultElementConfig = (type: ElementType) => {
     switch (type) {
       case 'text_field':
@@ -457,15 +572,68 @@ export default function TemplateEditor({
   };
 
   const deleteElement = async (stepId: string, elementId: string) => {
-    const confirmed = await confirm({
-      message: 'Are you sure you want to delete this element?',
-    });
-    if (confirmed) {
-      setSteps(steps.map(step =>
-        step.id === stepId
-          ? { ...step, elements: step.elements.filter(el => el.id !== elementId) }
-          : step
-      ));
+    const DEBUG_DELETION = true; // Set to false to disable debug logs
+    
+    try {
+      // Find the element to check its type
+      const step = steps.find(s => s.id === stepId);
+      const element = step?.elements.find(el => el.id === elementId);
+      
+      if (!step || !element) {
+        console.error('[DELETE TemplateEditor] Element not found:', { stepId, elementId, stepExists: !!step, elementExists: !!element });
+        return;
+      }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE TemplateEditor] Starting deletion:', { 
+          stepId, 
+          elementId, 
+          elementType: element.type,
+          currentStepsCount: steps.length,
+          currentElementsCount: step.elements.length 
+        });
+      }
+      
+      if (DEBUG_DELETION) {
+        console.log('[DELETE TemplateEditor] Updating state...');
+      }
+      
+      // Update steps immutably - remove element by stable id
+        setSteps(prevSteps => {
+          const updatedSteps = prevSteps.map(step =>
+            step.id === stepId
+              ? { 
+                  ...step, 
+                  elements: step.elements.filter(el => el.id !== elementId),
+                  // Remove tag dependencies that reference the deleted element
+                  tags: step.tags?.filter(tag => tag.elementId !== elementId)
+                }
+              : step
+          );
+          
+          if (DEBUG_DELETION) {
+            const updatedStep = updatedSteps.find(s => s.id === stepId);
+            console.log('[DELETE TemplateEditor] State updated:', {
+              beforeCount: prevSteps.find(s => s.id === stepId)?.elements.length,
+              afterCount: updatedStep?.elements.length,
+              elementStillExists: updatedStep?.elements.some(el => el.id === elementId)
+            });
+          }
+          
+          return updatedSteps;
+        });
+        
+        // Close element menu if it was open for this element's step
+        if (openElementMenuStepId === stepId) {
+          setOpenElementMenuStepId(null);
+        }
+        
+      if (DEBUG_DELETION) {
+        console.log('[DELETE TemplateEditor] Deletion complete, state cleared');
+      }
+    } catch (error) {
+      console.error('[DELETE TemplateEditor] Error in deleteElement:', error);
+      throw error;
     }
   };
 
@@ -520,10 +688,49 @@ export default function TemplateEditor({
     <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
       {/* Fixed Header */}
       <div className="fixed top-[140px] left-80 right-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-30">
-        <div>
-          <h2 className="text-xl font-semibold" style={{ color: '#464F5E' }}>
-            {name}
-          </h2>
+        <div className="flex items-center gap-2">
+          {editingTemplateName ? (
+            <div 
+              ref={editingTemplateNameRef}
+              className="min-w-[200px]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (editingTemplateNameValue.trim()) {
+                    setName(editingTemplateNameValue.trim());
+                  }
+                  setEditingTemplateName(false);
+                  setEditingTemplateNameValue('');
+                } else if (e.key === 'Escape') {
+                  setEditingTemplateName(false);
+                  setEditingTemplateNameValue('');
+                }
+              }}
+            >
+              <SystemField
+                type="text"
+                value={editingTemplateNameValue}
+                onChange={setEditingTemplateNameValue}
+                showLabel={false}
+              />
+            </div>
+          ) : (
+            <>
+              <h2 className="text-xl font-semibold" style={{ color: '#464F5E' }}>
+                {name}
+              </h2>
+              <Tooltip content="Edit template name">
+                <button
+                  onClick={() => {
+                    setEditingTemplateName(true);
+                    setEditingTemplateNameValue(name);
+                  }}
+                  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <Pencil size={16} />
+                </button>
+              </Tooltip>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <TabControl
@@ -734,6 +941,10 @@ export default function TemplateEditor({
                                             const targetStep = steps[stepIndex];
                                             updateElement(targetStep.id, elementId, updates);
                                           }}
+                                          onDeleteElement={async (stepIndex, elementId) => {
+                                            const targetStep = steps[stepIndex];
+                                            await deleteElement(targetStep.id, elementId);
+                                          }}
                                           primaryColor={primaryColor}
                                           showSelectionConfig={false}
                                           disableAddCard={false}
@@ -834,7 +1045,12 @@ export default function TemplateEditor({
                                   </span>
                                   <div className="flex items-center gap-2">
                                     <button
-                                      onClick={async () => await deleteElement(step.id, element.id)}
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        await deleteElement(step.id, element.id);
+                                      }}
                                       className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     >
                                       <Trash2 size={16} />
@@ -927,6 +1143,10 @@ export default function TemplateEditor({
                                     onUpdateElement={(stepIndex, elementId, updates) => {
                                       const targetStep = steps[stepIndex];
                                       updateElement(targetStep.id, elementId, updates);
+                                    }}
+                                    onDeleteElement={async (stepIndex, elementId) => {
+                                      const targetStep = steps[stepIndex];
+                                      await deleteElement(targetStep.id, elementId);
                                     }}
                                     primaryColor={primaryColor}
                                     showSelectionConfig={true}
@@ -1163,12 +1383,56 @@ export default function TemplateEditor({
                                 <span className="text-white text-xs font-bold">A</span>
                               </div>
                             )}
-                            <span 
-                              className="font-medium"
-                              style={{ color: isAppStep ? darkenColor(systemPrimaryColor, 20) : '#464F5E' }}
-                            >
-                              {step.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {editingStepNameId === step.id ? (
+                                <div 
+                                  ref={editingStepNameRef}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="min-w-[200px]"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      if (editingStepNameValue.trim()) {
+                                        updateStep(step.id, { name: editingStepNameValue.trim() });
+                                      }
+                                      setEditingStepNameId(null);
+                                      setEditingStepNameValue('');
+                                    } else if (e.key === 'Escape') {
+                                      setEditingStepNameId(null);
+                                      setEditingStepNameValue('');
+                                    }
+                                  }}
+                                >
+                                  <SystemField
+                                    type="text"
+                                    value={editingStepNameValue}
+                                    onChange={setEditingStepNameValue}
+                                    showLabel={false}
+                                    className="font-medium"
+                                  />
+                                </div>
+                              ) : (
+                                <>
+                                  <span 
+                                    className="font-medium"
+                                    style={{ color: isAppStep ? darkenColor(systemPrimaryColor, 20) : '#464F5E' }}
+                                  >
+                                    {step.name}
+                                  </span>
+                                  <Tooltip content="Edit step name">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingStepNameId(step.id);
+                                        setEditingStepNameValue(step.name);
+                                      }}
+                                      className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                  </Tooltip>
+                                </>
+                              )}
+                            </div>
                             {isAppStep && step.applicationStepHeading && expandedStepId !== step.id && (
                               <span 
                                 className="text-sm"
@@ -1192,7 +1456,12 @@ export default function TemplateEditor({
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                await deleteStep(step.id);
+                                console.log('[DELETE STEP TemplateEditor] Button clicked for step:', step.id);
+                                try {
+                                  await deleteStep(step.id);
+                                } catch (error) {
+                                  console.error('[DELETE STEP TemplateEditor] Error from deleteStep:', error);
+                                }
                               }}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             >
@@ -1380,6 +1649,10 @@ export default function TemplateEditor({
                                                 const targetStep = steps[stepIndex];
                                                 updateElement(targetStep.id, elementId, updates);
                                               }}
+                                              onDeleteElement={async (stepIndex, elementId) => {
+                                                const targetStep = steps[stepIndex];
+                                                await deleteElement(targetStep.id, elementId);
+                                              }}
                                               primaryColor={primaryColor}
                                               showSelectionConfig={false}
                                               disableAddCard={false}
@@ -1479,7 +1752,12 @@ export default function TemplateEditor({
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <button
-                                          onClick={async () => await deleteElement(step.id, element.id)}
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            await deleteElement(step.id, element.id);
+                                          }}
                                           className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                         >
                                           <Trash2 size={16} />

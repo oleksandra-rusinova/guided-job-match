@@ -10,4 +10,9 @@ export default defineConfig({
   preview: {
     port: 5173,
   },
+  server: {
+    headers: {
+      'Content-Security-Policy': "script-src 'self' 'unsafe-eval' 'unsafe-inline'; object-src 'none';",
+    },
+  },
 });

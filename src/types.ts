@@ -77,6 +77,11 @@ export interface Step {
   isApplicationStep?: boolean;
   applicationStepHeading?: string;
   applicationStepSubheading?: string;
+  tags?: Array<{
+    id: string;
+    name: string;
+    elementId?: string; // Reference to element this tag depends on
+  }>;
 }
 
 export interface Prototype {

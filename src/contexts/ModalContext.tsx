@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useRef } from 'react';
 import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
 
@@ -8,6 +8,7 @@ interface ConfirmOptions {
   confirmText?: string;
   cancelText?: string;
   confirmButtonColor?: string;
+  isDeleting?: boolean;
 }
 
 interface AlertOptions {
@@ -36,11 +37,17 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     resolve: () => void;
   } | null>(null);
 
+  const confirmStateRef = useRef(confirmState);
+  confirmStateRef.current = confirmState;
+
+  const alertStateRef = useRef(alertState);
+  alertStateRef.current = alertState;
+
   const confirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
     return new Promise((resolve) => {
       setConfirmState({
         isOpen: true,
-        options,
+        options: { ...options, isDeleting: false },
         resolve,
       });
     });
@@ -57,25 +64,31 @@ export function ModalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleConfirmClose = useCallback(() => {
-    if (confirmState) {
-      confirmState.resolve(false);
+    const currentState = confirmStateRef.current;
+    if (currentState && !currentState.options.isDeleting) {
+      currentState.resolve(false);
       setConfirmState(null);
     }
-  }, [confirmState]);
+  }, []);
 
   const handleConfirmConfirm = useCallback(() => {
-    if (confirmState) {
-      confirmState.resolve(true);
+    const currentState = confirmStateRef.current;
+    if (currentState && !currentState.options.isDeleting) {
+      const resolveFn = currentState.resolve;
+      // Resolve the promise first, then clear state
+      resolveFn(true);
       setConfirmState(null);
     }
-  }, [confirmState]);
+  }, []);
+
 
   const handleAlertClose = useCallback(() => {
-    if (alertState) {
-      alertState.resolve();
+    const currentState = alertStateRef.current;
+    if (currentState) {
+      currentState.resolve();
       setAlertState(null);
     }
-  }, [alertState]);
+  }, []);
 
   return (
     <ModalContext.Provider value={{ confirm, alert }}>
@@ -90,6 +103,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
           confirmText={confirmState.options.confirmText}
           cancelText={confirmState.options.cancelText}
           confirmButtonColor={confirmState.options.confirmButtonColor}
+          isDeleting={confirmState.options.isDeleting}
         />
       )}
       {alertState && (
