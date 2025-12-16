@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Mail, Clock, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLoginHistory, LoginHistory } from '../utils/loginHistory';
+import { ArcSpinner } from './Loader';
 
 export default function ActivityLog() {
   const navigate = useNavigate();
@@ -144,7 +145,9 @@ export default function ActivityLog() {
 
           {isLoading ? (
             <div className="px-6 py-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-700"></div>
+              <div className="flex justify-center mb-4">
+                <ArcSpinner size={32} />
+              </div>
               <p className="mt-4 text-gray-600">Loading login history...</p>
             </div>
           ) : loginHistory.length === 0 ? (

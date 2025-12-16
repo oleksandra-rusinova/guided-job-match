@@ -1,6 +1,6 @@
 import { useLoading } from '../contexts/LoadingContext';
 
-function ArcSpinner({ size = 48 }: { size?: number }) {
+export function ArcSpinner({ size = 48 }: { size?: number }) {
   return (
     <div 
       className="rounded-full border-4 border-gray-200 border-t-primary-500 animate-spin"
