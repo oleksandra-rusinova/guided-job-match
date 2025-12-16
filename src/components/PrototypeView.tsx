@@ -2,12 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Trash2, Plus, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { Prototype, Step, Element, ElementType } from '../types';
 import { useLoading } from '../contexts/LoadingContext';
-
-function ArcSpinner({ size = 48, color = '#6633FF' }: { size?: number; color?: string }) {
-  return (
-    <div className="w-11 h-11 origin-top-left -rotate-90 outline outline-[3px] outline-offset-[-1.50px] outline-components-progress-spinner-border animate-spin" />
-  );
-}
+import { ArcSpinner } from './Loader';
 
 type OptionType = NonNullable<Element['config']['options']>[number];
 import { updatePrototype } from '../utils/storage';

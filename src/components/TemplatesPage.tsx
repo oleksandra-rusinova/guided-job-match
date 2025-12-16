@@ -19,6 +19,7 @@ import TemplateEditor from './TemplateEditor';
 import SystemMessageModal from './SystemMessageModal';
 import Tabs from './Tabs';
 import Tooltip from './Tooltip';
+import { ArcSpinner } from './Loader';
 
 interface TemplatesPageProps {
   onBack: () => void;
@@ -470,28 +471,7 @@ export default function TemplatesPage({
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex flex-col items-center gap-3">
-                  <div className="relative w-8 h-8">
-                    <svg
-                      className="animate-spin"
-                      style={{ animation: 'spin 1s linear infinite' }}
-                      width="32"
-                      height="32"
-                      viewBox="0 0 32 32"
-                    >
-                      <circle
-                        cx="16"
-                        cy="16"
-                        r="14"
-                        fill="none"
-                        stroke="#6633FF"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeDasharray="66"
-                        strokeDashoffset="16.5"
-                        transform="rotate(-90 16 16)"
-                      />
-                    </svg>
-                  </div>
+                  <ArcSpinner size={32} />
                   <p className="text-sm text-gray-500">Loading templates...</p>
                 </div>
               </div>

@@ -6,12 +6,7 @@ import PrimaryButton from './PrimaryButton';
 import SecondaryButton from './SecondaryButton';
 import SystemField from './SystemField';
 import HowItWorksModal from './HowItWorksModal';
-
-function ArcSpinner({ size = 48 }: { size?: number }) {
-  return (
-    <div className="w-11 h-11 origin-top-left -rotate-90 outline outline-[3px] outline-offset-[-1.50px] outline-components-progress-spinner-border animate-spin" />
-  );
-}
+import { ArcSpinner } from './Loader';
 
 interface HomePageProps {
   prototypes: Prototype[];

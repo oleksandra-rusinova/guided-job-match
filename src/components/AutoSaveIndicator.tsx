@@ -1,5 +1,6 @@
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { ArcSpinner } from './Loader';
 
 interface AutoSaveIndicatorProps {
   isSaving?: boolean;
@@ -24,7 +25,7 @@ export default function AutoSaveIndicator({ isSaving = false, lastSaved, classNa
     <div className={`flex items-center gap-1.5 text-xs text-gray-500 ${className}`}>
       {isSaving ? (
         <>
-          <Loader2 className="w-3 h-3 animate-spin" />
+          <ArcSpinner size={12} />
           <span>Saving...</span>
         </>
       ) : showSaved ? (
