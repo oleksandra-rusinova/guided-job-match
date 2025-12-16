@@ -2,7 +2,14 @@ import { useLoading } from '../contexts/LoadingContext';
 
 function ArcSpinner({ size = 48 }: { size?: number }) {
   return (
-    <div className="w-11 h-11 origin-top-left -rotate-90 outline outline-[3px] outline-offset-[-1.50px] outline-components-progress-spinner-border animate-spin" />
+    <div 
+      className="rounded-full border-4 border-gray-200 border-t-primary-500 animate-spin"
+      style={{ 
+        width: `${size}px`, 
+        height: `${size}px`,
+        borderTopColor: '#4D3EE0'
+      }}
+    />
   );
 }
 
