@@ -794,9 +794,22 @@ export default function TemplatePreview({
                   : hasMultipleFields 
                     ? { ...baseGapStyle, ...fieldGapStyle, padding: '0', marginBottom: '0', display: 'block' }
                     : { ...baseGapStyle, marginTop: index === 0 ? '120px' : '24px', marginBottom: '120px', padding: '0', display: 'block' };
+              // Calculate wrapper width based on number of cards
+              // Each card is 368px, gap is 24px between cards
+              // 1 card: 680px (for centering)
+              // 2 cards: 368px * 2 + 24px = 760px
+              // 3 cards: 368px * 3 + 24px * 2 = 1152px
+              // 4+ cards: 368px * 3 + 24px * 2 = 1152px (3 columns max)
+              let wrapperWidth = '680px';
+              if (numCards === 2) {
+                wrapperWidth = '760px';
+              } else if (numCards >= 3) {
+                wrapperWidth = '1152px';
+              }
+              
               const wrapperStyle = isSplitScreen 
                 ? { width: '100%', margin: '0', padding: '0' }
-                : { width: '680px', margin: '0 auto', padding: '0' };
+                : { width: wrapperWidth, margin: '0 auto', padding: '0' };
               
               // Use flexbox with fixed width for 1 or 2 cards, grid for others
               // In split screen mode, always use grid with 2 columns
@@ -806,7 +819,7 @@ export default function TemplatePreview({
                 <div key={el.id} style={containerStyle}>
                   <div style={wrapperStyle}>
                     {useFixedWidth ? (
-                      <div className="flex justify-center" style={{ gap: '24px' }}>
+                      <div className="flex justify-center gap-[24px]">
                         {options.map((opt: OptionType) => (
                           <div key={opt.id} style={{ width: '368px' }}>
                             <ApplicationCard
@@ -828,9 +841,9 @@ export default function TemplatePreview({
                         ))}
                       </div>
                     ) : (
-                      <div className={`grid ${gridCols} justify-center`} style={{ gap: '24px' }}>
+                      <div className={`grid ${gridCols} justify-center gap-[24px]`}>
                         {options.map((opt: OptionType) => (
-                          <div key={opt.id} style={numCards > 3 && !isSplitScreen ? { width: '368px' } : {}}>
+                          <div key={opt.id} style={{ width: '368px' }}>
                             <ApplicationCard
                               id={opt.id}
                               title={opt.title || 'Application'}

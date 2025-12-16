@@ -65,13 +65,23 @@ function AppContent() {
   }, [showTemplateSelector]);
 
   const handleSavePrototype = async (prototype: Prototype) => {
-    const result = await withLoading(() => savePrototype(prototype));
-    // Update local state immediately for instant UI feedback
-    if (result.success && result.data) {
-      updatePrototypeInState(result.data);
+    try {
+      const result = await withLoading(() => savePrototype(prototype));
+      // Update local state immediately for instant UI feedback
+      if (result.success && result.data) {
+        updatePrototypeInState(result.data);
+        console.log('[handleSavePrototype] Prototype saved successfully, navigating to home...');
+      } else {
+        console.error('[handleSavePrototype] Save failed:', result.error);
+        // Still navigate even if save failed (might have been saved via updatePrototype)
+      }
+      // Always navigate to home page after save attempt
+      navigate('/');
+    } catch (error) {
+      console.error('[handleSavePrototype] Error saving prototype:', error);
+      // Navigate even on error - the prototype might have been saved via updatePrototype
+      navigate('/');
     }
-    // Realtime will also update, but local state update provides instant feedback
-    navigate('/');
   };
 
   const handleDeletePrototype = async (id: string) => {

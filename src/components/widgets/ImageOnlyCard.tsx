@@ -21,9 +21,6 @@ export default function ImageOnlyCard({
   disabled = false
 }: ImageOnlyCardProps) {
   const [isHovered, setIsHovered] = useState(false);
-  
-  // When there are exactly 4 cards, use fixed aspect ratio sizing
-  const isFourCards = totalCards === 4;
 
   const getIndicatorState = () => {
     if (disabled) {
@@ -91,10 +88,7 @@ export default function ImageOnlyCard({
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{ 
-        minHeight: isFourCards ? 'auto' : '280px',
-        height: isFourCards ? '100%' : 'auto',
-        maxHeight: '280px',
-        aspectRatio: isFourCards ? '1 / 1' : undefined,
+        height: '280px',
         outlineColor: borderColor,
         outlineWidth: `${outlineWidth}px`,
       }}
@@ -122,7 +116,7 @@ export default function ImageOnlyCard({
       </div>
 
        {/* Image Container - Takes full height */}
-       <div className={`relative w-full ${isFourCards ? 'h-full' : 'h-1/2 flex-1'} overflow-hidden rounded-[15px]`}>
+       <div className="relative w-full h-full overflow-hidden rounded-[15px]">
          <img
            src={imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'}
            alt="Card image"

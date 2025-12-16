@@ -69,7 +69,7 @@ export function YesNoCard({ text, selected, onSelect, primaryColor, disabled = f
       }}
     >
       <div className="flex-1 flex justify-center items-center">
-        <div className={`text-center text-gray-600 text-lg font-normal font-['Poppins'] leading-6 tracking-tight ${disabled ? 'text-gray-400' : ''}`}>
+        <div className={`text-center text-gray-600 text-xl font-normal font-['Poppins'] leading-6 tracking-tight ${disabled ? 'text-gray-400' : ''}`}>
           {text || 'Option'}
         </div>
       </div>

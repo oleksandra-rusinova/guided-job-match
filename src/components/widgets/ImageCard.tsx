@@ -94,7 +94,7 @@ export default function ImageCard({
         disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
       style={{ 
-        minHeight: '140px',
+        height: '280px',
         outlineColor: borderColor,
         outlineWidth: `${outlineWidth}px`,
       }}
@@ -122,11 +122,11 @@ export default function ImageCard({
       </div>
 
        {/* Image Container */}
-       <div className="relative w-full overflow-hidden rounded-t-2xl">
+       <div className="relative w-full overflow-hidden rounded-t-2xl" style={{ height: '180px' }}>
          <img
            src={imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'}
            alt={title}
-           className="w-full h-48 object-cover"
+           className="w-full h-full object-cover"
          />
          {/* Overlay when selected */}
          {selected && !disabled && (
@@ -142,7 +142,7 @@ export default function ImageCard({
        {/* Text Content */}
        <div className="p-4 md:p-6">
          <div
-           className={`text-gray-600 text-lg font-normal font-['Poppins'] leading-6 tracking-tight line-clamp-2 ${disabled ? 'text-gray-400' : ''}`}
+           className={`text-zinc-700 text-base font-normal font-['Poppins'] leading-6 tracking-tight line-clamp-2 ${disabled ? 'text-gray-400' : ''}`}
            title={title || 'Option'}
          >
            {title || 'Option'}
